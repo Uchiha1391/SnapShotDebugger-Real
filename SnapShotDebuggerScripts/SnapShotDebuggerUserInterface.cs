@@ -38,7 +38,6 @@ public class SnapShotDebuggerUserInterface : MonoBehaviour
     [Button]
     public void GetToCurrentExecution()
     {
-        SnapshotDebubber.GetToCurrentState();
         IndexOfFunctionToUndo = -1;
 
     }

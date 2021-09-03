@@ -5,8 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using ES3Internal;
-
-
 using Sirenix.Serialization;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
@@ -30,43 +28,26 @@ namespace NewGame
 
     public class SnapshotDebubber
     {
-        private static int _numberOfSnapShotstaken;
-        private static bool IsUndo;
+        public static int NumberOfSnapShotstaken { get; private set; }
 
-        private static int
-            CurrentUndoMethodIndex; // very very important. it tracks how many methods will get undo or redo. also its from reverse order . check where its set
+        public static int CurrentUndoMethodIndex { get; private set; }
 
-        private static readonly List<(string, ES3SerializableSettings)>
-            AutosaveKeysAndSettinglist =
-                new List<(string, ES3SerializableSettings)>();
+        public static List<(string, ES3SerializableSettings)>
+            AutosaveKeysAndSettinglist { get; } =
+            new List<(string, ES3SerializableSettings)>();
 
-        private static readonly List<SnapShotDataStructure> MethodsRelatedData
-            = new List<SnapShotDataStructure>();
+        public static List<SnapShotDataStructure> MethodsRelatedData { get;
+            private set;
+        } =
+            new List<SnapShotDataStructure>();
 
 
-        /// <summary>
-        ///     it stores all the serialization data that is created for to retrive current state
-        /// </summary>
-        private static List<(Object, SerializationData)>
-            _currentStateOdinSerializedDataList;
+      
 
         public static void TakeSnapshot(object MethodClassInstance,
             string MethodName,
             StackFrame[] StackFrameOfTheMethod)
         {
-            if (IsUndo)
-                // EditorUtility.DisplayDialog("snapshot debugger", "undo is activated so no snapshot taken", "ok");
-
-                return;
-
-
-            // not using es3 anymore
-            //if (FileForMethodFieldsSetting == null)
-            //{
-            //    FileForMethodFieldsSetting =
-            //        new ES3SerializableSettings("SnapshotDebugger-FileForMethodFieldsSetting--" +
-            //                                    Guid.NewGuid().ToString());
-            //}
 
 
             try
@@ -106,8 +87,8 @@ namespace NewGame
 
 
                 ConsoleProDebug.Watch("No. of snapshots taken",
-                    _numberOfSnapShotstaken.ToString());
-                _numberOfSnapShotstaken++;
+                    NumberOfSnapShotstaken.ToString());
+                NumberOfSnapShotstaken++;
             }
             catch (Exception e)
             {
@@ -143,7 +124,6 @@ namespace NewGame
                 return;
             }
 
-            IsUndo = true;
 
 
             CurrentUndoMethodIndex = MethodsRelatedData.Count - indexOfMethod;
@@ -246,8 +226,6 @@ namespace NewGame
         {
             try
             {
-                if (IsUndo)
-                    return;
 
                 if (parameters.Length <= 0)
                     return;
@@ -324,7 +302,7 @@ namespace NewGame
         }
     }
 
-    class SnapShotDataStructure
+    public class SnapShotDataStructure
     {
         public string MethodName { get; set; }
         public object MethodClassInstance { get; set; }

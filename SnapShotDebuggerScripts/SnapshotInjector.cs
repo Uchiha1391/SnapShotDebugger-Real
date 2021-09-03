@@ -22,8 +22,8 @@ namespace Assets.Editor
         [InitializeOnLoadMethod]
         private static void OnInitialized()
         {
-            //AssemblyReloadEvents.afterAssemblyReload += GetassmeblyDefiniton;
-            //CompilationPipeline.compilationFinished += GetassmeblyDefiniton;
+            //AssemblyReloadEvents.afterAssemblyReload += InjectCode;
+            //CompilationPipeline.compilationFinished += InjectCode;
             CompilationPipeline.assemblyCompilationFinished +=
                 OnCompilationFinished;
         }
@@ -52,7 +52,7 @@ namespace Assets.Editor
                 return;
 
             if (assemblyPath.Contains("NewgameAssembly.dll"))
-                GetassmeblyDefiniton();
+                InjectCode();
         }
         //
         //
@@ -80,7 +80,7 @@ namespace Assets.Editor
         //            return;
         //        }
 
-        //        GetassmeblyDefiniton();
+        //        InjectCode();
         //    }////
         //}
         /// <summary>
@@ -89,9 +89,9 @@ namespace Assets.Editor
         /// <param name="o"></param>
         //
         [MenuItem("My Ui Commands/injectMethod #&q")]
-        public static void GetassmeblyDefiniton()
+        public static void InjectCode()
         {
-            var AssemblyFilePath = AssemblyLocation;
+                var AssemblyFilePath = AssemblyLocation;
             using (var AssemblyDefinitionInstance =
                 AssemblyDefinition.ReadAssembly(AssemblyFilePath,
                     new ReaderParameters

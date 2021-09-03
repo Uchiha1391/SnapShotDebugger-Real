@@ -7,7 +7,7 @@ using UnityEditor;
 public class SnapShotDebuggerUserInterface : MonoBehaviour
 {
 
-    public int IndexOfFunctionToUndo=-1;
+    [SerializeField]int _indexOfFunctionToUndo=-1;
 
     void Start()
     {
@@ -20,32 +20,12 @@ public class SnapShotDebuggerUserInterface : MonoBehaviour
         SnapshotDebubber.LogMethodds();
     }
 
-    //
-    [Button]
-    public void UndoMethod()
-    {
-        if(IndexOfFunctionToUndo==-1)
-        {
-            EditorUtility.DisplayDialog("snapshot debugger Error", "set index before using","got it");
-            return;
-        }
 
-        SnapshotDebubber.UndloadSnapShot(IndexOfFunctionToUndo);
-        IndexOfFunctionToUndo = -1;
-    }
-
-
-    [Button]
-    public void GetToCurrentExecution()
-    {
-        IndexOfFunctionToUndo = -1;
-
-    }
     [Button]
     public void LogStackFrameOfIndexedMethod()
     {
-        SnapshotDebubber.LogStackFrameOfGivenMethod(IndexOfFunctionToUndo);
-        IndexOfFunctionToUndo = -1;
+        SnapshotDebubber.LogStackFrameOfGivenMethod(_indexOfFunctionToUndo);
+        _indexOfFunctionToUndo = -1;
 
     }
 

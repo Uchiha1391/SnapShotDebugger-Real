@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Reflection;
 using ES3Editor;
 using ES3Internal;
 using Mono.CecilX;
@@ -14,27 +14,26 @@ using UnityEngine;
 
 namespace Assets.Editor
 {
-    static class SnapshotInjector
+    public static class SnapshotInjector
     {
-        private static string AssemblyLocationToAllow;
-        
+        public static string AssemblyLocation;
+        public static string MainAssemblyLocation = typeof(testScript).Assembly.Location;
+
         public static Type TypeToGenerate = null;
-
-
 
 
         private static void FillAssemblyName()
         {
-            AssemblyLocationToAllow = typeof(testScript).Assembly.Location;
-
+            AssemblyLocation = typeof(testScript).Assembly.Location;
         }
+
         [InitializeOnLoadMethod]
         private static void OnInitialized()
         {
-            Debug.Log("Snapshot Injection Callback Initialized");
-
             if (!EditorApplication.isPlayingOrWillChangePlaymode)
             {
+                Debug.Log("Snapshot Injection Callback Initialized");
+
                 CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
             }
         }
@@ -43,7 +42,7 @@ namespace Assets.Editor
         {
             return messages.Any(msg => msg.type == CompilerMessageType.Error);
         }
-        
+
 
         private static void OnCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
@@ -60,7 +59,7 @@ namespace Assets.Editor
                 assemblyPath.Contains("Editor.dll"))
                 return;
 
-            var normalizeScriptPath = AssemblyLocationToAllow.Replace('\\', '/');
+            var normalizeScriptPath = AssemblyLocation.Replace('\\', '/');
             var RelativePath = FileUtil.GetProjectRelativePath(normalizeScriptPath);
 
 
@@ -68,15 +67,20 @@ namespace Assets.Editor
             {
                 InjectCode();
             }
-           
         }
 
         [MenuItem("My Ui Commands/injectMethod #&q")]
         public static void InjectCode()
         {
-            var AssemblyFilePath = AssemblyLocationToAllow;
+            var CustomAssemmblyResolver = new DefaultAssemblyResolver();
+            var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssemblyLocation);
+            CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
+
             using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(
-                AssemblyFilePath, new ReaderParameters {ReadWrite = true, ReadSymbols = true}))
+                AssemblyLocation, new ReaderParameters
+                {
+                    ReadWrite = true, ReadSymbols = true,AssemblyResolver = CustomAssemmblyResolver
+                }))
             {
                 var TypeDefinitions = AssemblyDefinitionInstance.MainModule.GetTypes().Where(
                     definition =>
@@ -105,8 +109,7 @@ namespace Assets.Editor
                         return true;
                     }
 
-                    //
-                    //MethodsTOinject = TypeDefinition.Methods.Where(CheckforAttributes).ToList();
+                    
                     var dd = TypeDefinition.Methods.ToList();
                     foreach (var MethodDefinition in dd)
                     {
@@ -116,16 +119,54 @@ namespace Assets.Editor
                     }
                 }
 
-                var InjectMethodType =
-                    AssemblyDefinitionInstance.MainModule.GetType(
-                        typeof(SnapshotDebubber).ToString());
-                var InstructionsOfMethodToinjectEnurmator =
-                    InjectMethodType.Methods.Single(definition => definition.Name == "OnEntry");
-                var TakeSnapshotForParametersMethod = InjectMethodType.Methods.Single(definition =>
-                    definition.Name == "TakeSnapshotForParameters");
+
+                TypeDefinition InjectMethodType = null;
+                InjectMethodType =
+                    AssemblyDefinitionInstance.MainModule.GetType(typeof(SnapshotDebubber)
+                        .ToString());
+
+                MethodDefinition InstructionsOfMethodToinject;
+                MethodDefinition TakeSnapshotForParametersMethod;
+
+                if (InjectMethodType == null) // it means its this assembly is from Roslyn
+                {
+                    #region I also Inject on roslyn assemblies and they don't have snapshotdebugger class reference which is necessary so I need to get that class from main assembly(Assembly-Csharp)
+
+                    var ImportOnEntry =
+                        AssemblyDefinitionInstance.MainModule.ImportReference(
+                            typeof(SnapshotDebubber).GetMethod("OnEntry"));
+                    var ImportParametersMethod =
+                        AssemblyDefinitionInstance.MainModule.ImportReference(
+                            typeof(SnapshotDebubber).GetMethod("TakeSnapshotForParameters"));
+
+
+                    InstructionsOfMethodToinject = ImportOnEntry.Resolve();
+
+                    TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
+                    //InjectMethodType =
+                    //    _mainProjectAssembly.MainModule.GetType(typeof(SnapshotDebubber)
+                    //        .ToString());
+
+                    //InstructionsOfMethodToinject =
+                    //    InjectMethodType.Methods.Single(definition => definition.Name == "OnEntry");
+                    //TakeSnapshotForParametersMethod = InjectMethodType.Methods.Single(definition =>
+                    //    definition.Name == "TakeSnapshotForParameters");
+
+                    #endregion
+                }
+                else
+                {
+                    InstructionsOfMethodToinject =
+                        InjectMethodType.Methods.Single(definition =>
+                            definition.Name == "OnEntry");
+                    TakeSnapshotForParametersMethod =
+                        InjectMethodType.Methods.Single(definition =>
+                            definition.Name == "TakeSnapshotForParameters");
+                }
+
 
                 var InstructionsOfMethodToinjectList =
-                    InstructionsOfMethodToinjectEnurmator.Body.Instructions.ToList();
+                    InstructionsOfMethodToinject.Body.Instructions.ToList();
                 InstructionsOfMethodToinjectList.Reverse();
                 InstructionsOfMethodToinjectList.RemoveAt(0);
 
@@ -205,7 +246,16 @@ namespace Assets.Editor
                         foreach (var newInstruction in
                             FinalInstructionsToinject) // add the new instructions in referse order
                         {
+                            if (newInstruction.Operand is MethodReference Reference)
+
+                            {
+                                newInstruction.Operand =
+                                    AssemblyDefinitionInstance.MainModule.ImportReference(
+                                        Reference);
+                            }
+
                             var firstInstruction = MethodDefinition.Body.Instructions[0];
+
                             var processor = MethodDefinition.Body.GetILProcessor();
                             processor.InsertBefore(firstInstruction, newInstruction);
                         }
@@ -215,8 +265,10 @@ namespace Assets.Editor
 
                     var writeParams = new WriterParameters {WriteSymbols = true};
 
+                    string MynedddddddDll = Path.GetDirectoryName(AssemblyLocation)+"Myneddddddd.dll";
                     AssemblyDefinitionInstance
-                        .Write(writeParams); // Write to the same file that was used to open the file
+                        .Write(MynedddddddDll,
+                            writeParams); // Write to the same file that was used to open the file
 
 
                     Debug.Log(" finished injecting methods count==" + FilterMethodList.Count);
@@ -226,9 +278,8 @@ namespace Assets.Editor
                     Debug.Log("No methods to inject ");
                 }
             }
-
-            //
         }
+
 
         public static List<MethodDefinition> FilterMethodDefinitions(
             List<MethodDefinition> rawMethodDefinitionsList)
@@ -273,7 +324,5 @@ namespace Assets.Editor
             //customEs3TypeGeneratorData.Instance.SelectType(TypeToCreateScriptFor); // doesnt need this it servers no purpose
             Debug.Log("finished es3 type");
         }
-
-
     }
 }

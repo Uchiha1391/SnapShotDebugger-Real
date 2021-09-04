@@ -8,6 +8,7 @@ using Mono.CecilX;
 using Mono.CecilX.Cil;
 using Mono.CecilX.Rocks;
 using NewGame;
+using RoslynCSharp.Compiler;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -20,6 +21,7 @@ namespace Assets.Editor
         public static string MainAssemblyLocation = typeof(testScript).Assembly.Location;
 
         public static Type TypeToGenerate = null;
+        private static AssemblyDefinition _mainAssemblyInstance;
 
 
         private static void FillAssemblyName()
@@ -33,7 +35,6 @@ namespace Assets.Editor
             if (!EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 Debug.Log("Snapshot Injection Callback Initialized");
-
                 CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
             }
         }
@@ -132,25 +133,37 @@ namespace Assets.Editor
                 {
                     #region I also Inject on roslyn assemblies and they don't have snapshotdebugger class reference which is necessary so I need to get that class from main assembly(Assembly-Csharp)
 
-                    var ImportOnEntry =
-                        AssemblyDefinitionInstance.MainModule.ImportReference(
-                            typeof(SnapshotDebubber).GetMethod("OnEntry"));
-                    var ImportParametersMethod =
-                        AssemblyDefinitionInstance.MainModule.ImportReference(
-                            typeof(SnapshotDebubber).GetMethod("TakeSnapshotForParameters"));
 
 
-                    InstructionsOfMethodToinject = ImportOnEntry.Resolve();
+                    _mainAssemblyInstance = AssemblyDefinition.ReadAssembly(MainAssemblyLocation,
+                        new ReaderParameters
+                        {
+                            ReadWrite = true,
+                            ReadSymbols = true,
+                            AssemblyResolver = CustomAssemmblyResolver
+                        });
 
-                    TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
-                    //InjectMethodType =
-                    //    _mainProjectAssembly.MainModule.GetType(typeof(SnapshotDebubber)
-                    //        .ToString());
+                    //var ImportOnEntry =
+                    //    AssemblyDefinitionInstance.MainModule.ImportReference(
+                    //        typeof(SnapshotDebubber).GetMethod("OnEntry"));
+                    //var ImportParametersMethod =
+                    //    AssemblyDefinitionInstance.MainModule.ImportReference(
+                    //        typeof(SnapshotDebubber).GetMethod("TakeSnapshotForParameters"));
 
-                    //InstructionsOfMethodToinject =
-                    //    InjectMethodType.Methods.Single(definition => definition.Name == "OnEntry");
-                    //TakeSnapshotForParametersMethod = InjectMethodType.Methods.Single(definition =>
-                    //    definition.Name == "TakeSnapshotForParameters");
+
+                    //InstructionsOfMethodToinject = ImportOnEntry.Resolve();
+
+                    //TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
+
+
+                    InjectMethodType =
+                        _mainAssemblyInstance.MainModule.GetType(typeof(SnapshotDebubber)
+                            .ToString());
+
+                    InstructionsOfMethodToinject =
+                        InjectMethodType.Methods.Single(definition => definition.Name == "OnEntry");
+                    TakeSnapshotForParametersMethod = InjectMethodType.Methods.Single(definition =>
+                        definition.Name == "TakeSnapshotForParameters");
 
                     #endregion
                 }
@@ -265,19 +278,31 @@ namespace Assets.Editor
 
                     var writeParams = new WriterParameters {WriteSymbols = true};
 
-                    string MynedddddddDll = Path.GetDirectoryName(AssemblyLocation)+"Myneddddddd.dll";
-                    AssemblyDefinitionInstance
-                        .Write(MynedddddddDll,
-                            writeParams); // Write to the same file that was used to open the file
+                    try
+                    {
+                        AssemblyDefinitionInstance
+                            .Write(writeParams); // Write to the same file that was used to open the file
 
 
-                    Debug.Log(" finished injecting methods count==" + FilterMethodList.Count);
+                        Debug.Log(" finished injecting methods count==" + FilterMethodList.Count + "   assemblyLocation is--"+AssemblyLocation);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError(e);
+                        throw;
+                    }finally{
+                    {
+                        _mainAssemblyInstance?.Dispose();
+                    }}
                 }
                 else
                 {
                     Debug.Log("No methods to inject ");
+                    _mainAssemblyInstance?.Dispose();
+
                 }
             }
+
         }
 
 

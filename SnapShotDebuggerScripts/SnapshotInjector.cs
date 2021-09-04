@@ -21,7 +21,6 @@ namespace Assets.Editor
         public static string MainAssemblyLocation = typeof(testScript).Assembly.Location;
 
         public static Type TypeToGenerate = null;
-        private static AssemblyDefinition _mainAssemblyInstance;
 
 
         private static void FillAssemblyName()
@@ -134,36 +133,18 @@ namespace Assets.Editor
                     #region I also Inject on roslyn assemblies and they don't have snapshotdebugger class reference which is necessary so I need to get that class from main assembly(Assembly-Csharp)
 
 
-
-                    _mainAssemblyInstance = AssemblyDefinition.ReadAssembly(MainAssemblyLocation,
-                        new ReaderParameters
-                        {
-                            ReadWrite = true,
-                            ReadSymbols = true,
-                            AssemblyResolver = CustomAssemmblyResolver
-                        });
-
-                    //var ImportOnEntry =
-                    //    AssemblyDefinitionInstance.MainModule.ImportReference(
-                    //        typeof(SnapshotDebubber).GetMethod("OnEntry"));
-                    //var ImportParametersMethod =
-                    //    AssemblyDefinitionInstance.MainModule.ImportReference(
-                    //        typeof(SnapshotDebubber).GetMethod("TakeSnapshotForParameters"));
+                    var ImportOnEntry =
+                        AssemblyDefinitionInstance.MainModule.ImportReference(
+                            typeof(SnapshotDebubber).GetMethod("OnEntry"));
+                    var ImportParametersMethod =
+                        AssemblyDefinitionInstance.MainModule.ImportReference(
+                            typeof(SnapshotDebubber).GetMethod("TakeSnapshotForParameters"));
 
 
-                    //InstructionsOfMethodToinject = ImportOnEntry.Resolve();
+                    InstructionsOfMethodToinject = ImportOnEntry.Resolve();
 
-                    //TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
-
-
-                    InjectMethodType =
-                        _mainAssemblyInstance.MainModule.GetType(typeof(SnapshotDebubber)
-                            .ToString());
-
-                    InstructionsOfMethodToinject =
-                        InjectMethodType.Methods.Single(definition => definition.Name == "OnEntry");
-                    TakeSnapshotForParametersMethod = InjectMethodType.Methods.Single(definition =>
-                        definition.Name == "TakeSnapshotForParameters");
+                    TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
+                  
 
                     #endregion
                 }
@@ -290,15 +271,11 @@ namespace Assets.Editor
                     {
                         Debug.LogError(e);
                         throw;
-                    }finally{
-                    {
-                        _mainAssemblyInstance?.Dispose();
-                    }}
+                    }
                 }
                 else
                 {
                     Debug.Log("No methods to inject ");
-                    _mainAssemblyInstance?.Dispose();
 
                 }
             }

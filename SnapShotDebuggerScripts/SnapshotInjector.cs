@@ -18,7 +18,7 @@ namespace Assets.Editor
     public static class SnapshotInjector
     {
         public static string AssemblyLocation;
-        public static string MainAssemblyLocation = typeof(testScript).Assembly.Location;
+        public static System.Reflection.Assembly MainAssembly= typeof(testScript).Assembly;
 
         public static Type TypeToGenerate = null;
 
@@ -73,7 +73,7 @@ namespace Assets.Editor
         public static void InjectCode()
         {
             var CustomAssemmblyResolver = new DefaultAssemblyResolver();
-            var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssemblyLocation);
+            var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssembly.Location);
             CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
 
             using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(
@@ -132,6 +132,7 @@ namespace Assets.Editor
                 {
                     #region I also Inject on roslyn assemblies and they don't have snapshotdebugger class reference which is necessary so I need to get that class from main assembly(Assembly-Csharp)
 
+                    
 
                     var ImportOnEntry =
                         AssemblyDefinitionInstance.MainModule.ImportReference(

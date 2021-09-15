@@ -76,10 +76,12 @@ namespace Assets.Editor
             var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssembly.Location);
             CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
 
+            if (AssemblyLocation == null) return;
             using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(
                 AssemblyLocation, new ReaderParameters
                 {
-                    ReadWrite = true, ReadSymbols = true,AssemblyResolver = CustomAssemmblyResolver
+                    ReadWrite = true, ReadSymbols = true,
+                    AssemblyResolver = CustomAssemmblyResolver
                 }))
             {
                 var TypeDefinitions = AssemblyDefinitionInstance.MainModule.GetTypes().Where(
@@ -109,7 +111,7 @@ namespace Assets.Editor
                         return true;
                     }
 
-                    
+
                     var dd = TypeDefinition.Methods.ToList();
                     foreach (var MethodDefinition in dd)
                     {
@@ -132,8 +134,6 @@ namespace Assets.Editor
                 {
                     #region I also Inject on roslyn assemblies and they don't have snapshotdebugger class reference which is necessary so I need to get that class from main assembly(Assembly-Csharp)
 
-                    
-
                     var ImportOnEntry =
                         AssemblyDefinitionInstance.MainModule.ImportReference(
                             typeof(SnapshotDebubber).GetMethod("OnEntry"));
@@ -145,7 +145,6 @@ namespace Assets.Editor
                     InstructionsOfMethodToinject = ImportOnEntry.Resolve();
 
                     TakeSnapshotForParametersMethod = ImportParametersMethod.Resolve();
-                  
 
                     #endregion
                 }
@@ -263,10 +262,13 @@ namespace Assets.Editor
                     try
                     {
                         AssemblyDefinitionInstance
-                            .Write(writeParams); // Write to the same file that was used to open the file
+                            .Write(
+                                writeParams); // Write to the same file that was used to open the file
 
 
-                        Debug.Log(" finished injecting methods count==" + FilterMethodList.Count + "   assemblyLocation is--"+AssemblyLocation);
+                        Debug.Log(" finished injecting methods count==" +
+                                  FilterMethodList.Count + "   assemblyLocation is--" +
+                                  AssemblyLocation);
                     }
                     catch (Exception e)
                     {
@@ -277,10 +279,8 @@ namespace Assets.Editor
                 else
                 {
                     Debug.Log("No methods to inject ");
-
                 }
             }
-
         }
 
 

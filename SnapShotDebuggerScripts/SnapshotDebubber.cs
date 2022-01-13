@@ -1,4 +1,5 @@
-﻿using System;
+﻿#if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -7,102 +8,144 @@ using System.Text;
 using ES3Internal;
 using Sirenix.Serialization;
 using UnityEditor;
+using UnityEngine;
 using Debug = UnityEngine.Debug;
 using Object = UnityEngine.Object;
 
 namespace NewGame
 {
-    public class SnapShotAttributes
-    {
-        [AttributeUsage(AttributeTargets.Class)]
-        public class SnapShotInjectionAttribute : Attribute
-        {
-        }
-
-        [AttributeUsage(AttributeTargets.Method)]
-        public class IgnoreSnapShotInjectionAttribute : Attribute
-        {
-        }
-    }
-
-
     public class SnapshotDebubber
     {
+        public static bool ShouldTakeSnapShot = false;
         public static int NumberOfSnapShotstaken { get; private set; }
 
-        public static int CurrentUndoMethodIndex { get; private set; }
 
-        public static List<(string, ES3SerializableSettings)>
-            AutosaveKeysAndSettinglist { get; } =
-            new List<(string, ES3SerializableSettings)>();
-
-        public static List<SnapShotDataStructure> MethodsRelatedData { get;
-            private set;
-        } =
+        public static List<SnapShotDataStructure> MethodsRelatedData { get; private set; } =
             new List<SnapShotDataStructure>();
 
+        private static bool CheckIfBaseClassMonobehaviour(Type objectType)
+        {
+            Type baseTypeRecursive = objectType.BaseType;
+            while (baseTypeRecursive != null)
+            {
+                if (baseTypeRecursive == typeof(MonoBehaviour))
+                {
+                    return true;
+                }
 
-      
+                baseTypeRecursive = baseTypeRecursive.BaseType;
+            }
+
+            return false;
+        }
 
         public static void TakeSnapshot(object MethodClassInstance,
             string MethodName,
             StackFrame[] StackFrameOfTheMethod)
         {
+            if (!ShouldTakeSnapShot) return;
 
 
-            try
+            var isbaseClassMonobehaviour =
+                CheckIfBaseClassMonobehaviour(MethodClassInstance.GetType());
+            SerializationContext serializationContext = new SerializationContext
             {
-                var OdinDataInstance = new SerializationData();
-
-                if (MethodClassInstance != null)
+                Config = new SerializationConfig
                 {
-                    UnitySerializationUtility.SerializeUnityObject(
-                        (Object) MethodClassInstance, ref OdinDataInstance,
-                        true,
-                        new SerializationContext
+                    SerializationPolicy = SerializationPolicies.Everything
+                }
+            };
+            if (isbaseClassMonobehaviour)
+            {
+                {
+                    byte[] dataByteArray = null;
+                    List<Object> ReferncedObjectsList = null;
+                    UnitySerializationUtility.SerializeUnityObject((Object) MethodClassInstance,
+                        ref dataByteArray, ref ReferncedObjectsList, DataFormat.JSON, true,
+                        serializationContext);
+
+                    var checkJson = Encoding.ASCII.GetString(dataByteArray);
+                    Type MonoInterfaceOrAbstractClass = MethodClassInstance.GetType()
+                        .GetInterfaces().FirstOrDefault();
+
+                    if (MonoInterfaceOrAbstractClass == null)
+                    {
+                        if (MethodClassInstance.GetType().BaseType.Name != "MonoBehaviour")
                         {
-                            Config = new SerializationConfig
-                            {
-                                SerializationPolicy =
-                                    SerializationPolicies.Everything
-                            }
-                        });
-                    var checkJson =
-                        Encoding.ASCII.GetString(OdinDataInstance
-                            .SerializedBytes);
+                            MonoInterfaceOrAbstractClass = MethodClassInstance.GetType().BaseType;
+                        }
+                    }
+
+                    var casting = MethodClassInstance as MonoBehaviour;
+
+                    bool isInvokedByMe = false;
+                    if (StackFrameOfTheMethod.Length > 2)
+                    {
+                        var ttt = StackFrameOfTheMethod[1].GetMethod().DeclaringType
+                            .GetInterface("IMyCode");
+                        if (ttt == null)
+                        {
+                            isInvokedByMe = true;
+                        }
+                    }
+
+                    var snapShotDataStructure = new SnapShotDataStructure(MethodName,
+                        MethodClassInstance, null, dataByteArray,checkJson, ReferncedObjectsList,
+                        StackFrameOfTheMethod, MonoInterfaceOrAbstractClass?.Name,
+                        casting.gameObject, isInvokedByMe);
+                    MethodsRelatedData.Add(snapShotDataStructure);
+                }
+            }
+            else
+            {
+                var serializeValue = SerializationUtility.SerializeValue(MethodClassInstance,
+                    DataFormat.JSON, serializationContext);
+                var checkJson = Encoding.ASCII.GetString(serializeValue);
+                var NonMonoInterface =
+                    MethodClassInstance.GetType().GetInterfaces().FirstOrDefault();
+
+                bool isInvokedByMe = false;
+                if (StackFrameOfTheMethod.Length > 2)
+                {
+                    var ttt = StackFrameOfTheMethod[1].GetMethod().DeclaringType
+                            .GetInterface("IMyCode");
+                    if (ttt == null)
+                    {
+                        isInvokedByMe = true;
+                    }
                 }
 
-
-                MethodsRelatedData.Add(new SnapShotDataStructure(MethodName,
-                    MethodClassInstance, null,
-                    OdinDataInstance, StackFrameOfTheMethod));
-
-                #region saving gameobjects
-
-                var (newSetting, newKey) = NewKeyAndEs3SettingGenerator();
-                AutosaveKeysAndSettinglist.Add((newKey, newSetting));
-                ES3AutoSaveMgr._current.Save(newKey, newSetting);
-
-                #endregion
-
-
-                ConsoleProDebug.Watch("No. of snapshots taken",
-                    NumberOfSnapShotstaken.ToString());
-                NumberOfSnapShotstaken++;
+                MethodsRelatedData.Add(new SnapShotDataStructure(MethodName, MethodClassInstance,
+                    null, dataBytesArray: serializeValue,checkJson, null, StackFrameOfTheMethod,
+                    NonMonoInterface.Name, null, isInvokedByMe));
             }
-            catch (Exception e)
-            {
-                // Get stack trace for the exception with source file information
-                var st = new StackTrace(e, true);
-                // Get the top stack frame
-                var frame = st.GetFrame(0);
-                // Get the line number from the stack frame
-                var line = frame.GetFileLineNumber();
 
-                Debug.LogError(e + "-" + line);
 
-                throw;
-            }
+            #region saving gameobjects
+
+            //var (newSetting, newKey) = NewKeyAndEs3SettingGenerator();
+            //AutosaveKeysAndSettinglist.Add((newKey, newSetting));
+            //ES3AutoSaveMgr._current.Save(newKey, newSetting);
+
+            #endregion
+
+
+            ConsoleProDebug.Watch("No. of snapshots taken", NumberOfSnapShotstaken.ToString());
+            NumberOfSnapShotstaken++;
+
+            //catch (Exception e)
+            //{
+            //    // Get stack trace for the exception with source file information
+            //    var st = new StackTrace(e, true);
+            //    // Get the top stack frame
+            //    var frame = st.GetFrame(0);
+            //    // Get the line number from the stack frame
+            //    var line = frame.GetFileLineNumber();
+
+            //    Debug.LogError(e + "-" + line);
+
+            //    throw;
+            //}
         }
 
         private static ( ES3SerializableSettings newSetting, string newKey)
@@ -117,100 +160,91 @@ namespace NewGame
 
         public static void UndloadSnapShot(int indexOfMethod)
         {
-            if (indexOfMethod > MethodsRelatedData.Count)
-            {
-                Debug.LogWarning(
-                    "the index is bigger than the count of methods list");
-                return;
-            }
+            //if (indexOfMethod > MethodsRelatedData.Count)
+            //{
+            //    Debug.LogWarning("the index is bigger than the count of methods list");
+            //    return;
+            //}
 
 
+            //CurrentUndoMethodIndex = MethodsRelatedData.Count - indexOfMethod;
 
-            CurrentUndoMethodIndex = MethodsRelatedData.Count - indexOfMethod;
+            //for (var i = 0; i < CurrentUndoMethodIndex; i++)
+            //{
+            //    #region loading gameobjects original values
 
-            for (var i = 0; i < CurrentUndoMethodIndex; i++)
-            {
-                #region loading gameobjects original values
+            //    if (AutosaveKeysAndSettinglist.Count > 0)
+            //    {
+            //        var (key, Es3SerializableSettings) =
+            //            AutosaveKeysAndSettinglist[AutosaveKeysAndSettinglist.Count - i - 1];
+            //        ES3AutoSaveMgr._current.Load(key, Es3SerializableSettings);
+            //    }
 
-                if (AutosaveKeysAndSettinglist.Count > 0)
-                {
-                    var (key, Es3SerializableSettings) =
-                        AutosaveKeysAndSettinglist[
-                            AutosaveKeysAndSettinglist.Count - i - 1];
-                    ES3AutoSaveMgr._current.Load(key, Es3SerializableSettings);
-                }
+            //    #endregion
 
-                #endregion
+            //    #region method class fields data restore
 
-                #region method class fields data restore
-
-                if (MethodsRelatedData.Count > 0)
-                {
-                    var MethoDataStructure =
-                        MethodsRelatedData[MethodsRelatedData.Count - i - 1];
+            //    if (MethodsRelatedData.Count > 0)
+            //    {
+            //        var MethoDataStructure = MethodsRelatedData[MethodsRelatedData.Count - i - 1];
 
 
-                    if (MethoDataStructure.MethodClassInstance != null)
-                    {
-                        var OdinDataInstance =
-                            MethoDataStructure.OdinDataInstance;
-                        var checkJson =
-                            Encoding.ASCII.GetString(OdinDataInstance
-                                .SerializedBytes);
-                        //UnitySerializationUtility.DeserializeUnityObject((Object) Instance, ref OdinData);
-                        UnitySerializationUtility.DeserializeUnityObject(
-                            (Object) MethoDataStructure.MethodClassInstance,
-                            ref OdinDataInstance,
-                            new DeserializationContext
-                            {
-                                Config = new SerializationConfig
-                                {
-                                    SerializationPolicy = SerializationPolicies
-                                        .Everything
-                                }
-                            });
-                    }
+            //        if (MethoDataStructure.MethodClassInstance != null)
+            //        {
+            //            var DataBytesArray = MethoDataStructure.DataBytesArray;
+            //            var checkJson = Encoding.ASCII.GetString(DataBytesArray.SerializedBytes);
+            //            //UnitySerializationUtility.DeserializeUnityObject((Object) Instance, ref OdinData);
+            //            UnitySerializationUtility.DeserializeUnityObject(
+            //                (Object) MethoDataStructure.MethodClassInstance, ref DataBytesArray,
+            //                new DeserializationContext
+            //                {
+            //                    Config = new SerializationConfig
+            //                    {
+            //                        SerializationPolicy = SerializationPolicies.Everything
+            //                    }
+            //                });
+            //        }
 
 
-                    #region invoke the indexed method
+            //        #region invoke the indexed method
 
-                    //if (i == CurrentUndoMethodIndex - 1)
-                    //{
-                    //    var Type = MethoDataStructure.MethodClassInstance.GetType();
-                    //    var MethodInfo = Type.GetMethod(MethodName,
-                    //        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            //        //if (i == CurrentUndoMethodIndex - 1)
+            //        //{
+            //        //    var Type = MethoDataStructure.MethodClassInstance.GetType();
+            //        //    var MethodInfo = Type.GetMethod(MethodName,
+            //        //        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
 
 
-                    //    var FixedParameterdata = new List<object>();
+            //        //    var FixedParameterdata = new List<object>();
 
-                    //    #region fixing parameters and fetching gameobjects references from es3 references
+            //        //    #region fixing parameters and fetching gameobjects references from es3 references
 
-                    //    if (ParametersData != null)
-                    //        foreach (var CurrentData in ParametersData)
-                    //            if (CurrentData is long) // I never use long so its ok. tag:#RiskyCode
-                    //            {
-                    //                var gameobject = ES3ReferenceMgrBase.Current.Get((long) CurrentData);
-                    //                FixedParameterdata.Add(gameobject);
-                    //            }
-                    //            else
-                    //            {
-                    //                FixedParameterdata.Add(CurrentData);
-                    //            }
+            //        //    if (ParametersData != null)
+            //        //        foreach (var CurrentData in ParametersData)
+            //        //            if (CurrentData is long) // I never use long so its ok. tag:#RiskyCode
+            //        //            {
+            //        //                var gameobject = ES3ReferenceMgrBase.Current.Get((long) CurrentData);
+            //        //                FixedParameterdata.Add(gameobject);
+            //        //            }
+            //        //            else
+            //        //            {
+            //        //                FixedParameterdata.Add(CurrentData);
+            //        //            }
 
-                    //    #endregion
+            //        //    #endregion
 
-                    //    MethodInfo?.Invoke(Instance, FixedParameterdata.ToArray());
-                    //    //GetToCurrentState();
-                    //}
+            //        //    MethodInfo?.Invoke(Instance, FixedParameterdata.ToArray());
+            //        //    //GetToCurrentState();
+            //        //}
 
-                    #endregion
-                }
+            //        #endregion
+            //    }
 
-                #endregion
-            }
+            //    #endregion
+            //}
 
-            EditorUtility.DisplayDialog("snapshot debugger",
-                "undo is activated so no snapshot taken", "ok");
+            //EditorUtility.DisplayDialog("snapshot debugger",
+            //    "undo is activated so no snapshot taken", "ok");
         }
 
 
@@ -219,46 +253,33 @@ namespace NewGame
         public void OnEntry()
         {
             TakeSnapshot(this, MethodBase.GetCurrentMethod().Name,
-                new StackTrace().GetFrames());
+                new StackTrace(true).GetFrames());
         }
 
         public static void TakeSnapshotForParameters(object[] parameters)
         {
-            try
-            {
+            if (!ShouldTakeSnapShot)
+                return;
 
-                if (parameters.Length <= 0)
-                    return;
-                var ValueTuple =
-                    MethodsRelatedData.Last();
+            if (parameters.Length <= 0)
+                return;
+            var ValueTuple = MethodsRelatedData.Last();
 
 
-                var
-                    ParametersWithUnityObjectsReferences =
-                        new List<
-                            object>(); //if gameobject gets destroyed then es3 refrence will help as es3 creates a new gameobject if existing is not present.
-                foreach (var Parameter in parameters)
-                    if (Parameter != null &&
-                        Parameter.GetType() == typeof(Object))
-                    {
-                        var reference =
-                            ES3ReferenceMgrBase.Current.Get((Object) Parameter);
-                        ParametersWithUnityObjectsReferences.Add(reference);
-                    }
-                    else
-                    {
-                        ParametersWithUnityObjectsReferences.Add(Parameter);
-                    }
+            var ParametersWithUnityObjectsReferences =
+                new List<object>(); //if gameobject gets destroyed then es3 refrence will help as es3 creates a new gameobject if existing is not present.
+            foreach (var Parameter in parameters)
+                if (Parameter != null && Parameter.GetType() == typeof(Object))
+                {
+                    var reference = ES3ReferenceMgrBase.Current.Get((Object) Parameter);
+                    ParametersWithUnityObjectsReferences.Add(reference);
+                }
+                else
+                {
+                    ParametersWithUnityObjectsReferences.Add(Parameter);
+                }
 
-                ValueTuple.ParametersData =
-                    ParametersWithUnityObjectsReferences.ToArray();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(e);
-
-                throw;
-            }
+            ValueTuple.ParametersData = ParametersWithUnityObjectsReferences.ToArray();
         }
 
         #endregion
@@ -268,23 +289,20 @@ namespace NewGame
         {
             for (var Index = 0; Index < MethodsRelatedData.Count; Index++)
             {
-                var ValueTuple =
-                    MethodsRelatedData[Index];
+                var ValueTuple = MethodsRelatedData[Index];
                 ConsoleProDebug.LogToFilter(
-                    ValueTuple.MethodClassInstance + ":" +
-                    ValueTuple.MethodName + "--Index=" + Index,
+                    ValueTuple.MethodClassInstance + ":" + ValueTuple.MethodName + "--Index=" +
+                    Index + "--IsInovkedByMe=" + ValueTuple.IsEventBasedExecution,
                     "SnapShotMethods");
             }
         }
 
         public static void LogStackFrameOfGivenMethod(int IndexOFMethod)
         {
-            var ValueTuple =
-                MethodsRelatedData[IndexOFMethod];
+            var ValueTuple = MethodsRelatedData[IndexOFMethod];
 
             foreach (var StackFrame in ValueTuple.StackFrameOfTheMethod)
-                ConsoleProDebug.LogToFilter(StackFrame.ToString(),
-                    "StackframeOfGivenMethod");
+                ConsoleProDebug.LogToFilter(StackFrame.ToString(), "StackframeOfGivenMethod");
         }
 
         /// <summary>
@@ -292,8 +310,7 @@ namespace NewGame
         /// </summary>
         public static void SizeofDebuggingData()
         {
-            var dd = SerializationUtility.SerializeValue(MethodsRelatedData,
-                DataFormat.JSON);
+            var dd = SerializationUtility.SerializeValue(MethodsRelatedData, DataFormat.JSON);
             var json = Encoding.ASCII.GetString(dd);
 
             var size = SizeConverterCustom.ToSize(dd.Length * sizeof(byte),
@@ -305,22 +322,42 @@ namespace NewGame
     public class SnapShotDataStructure
     {
         public string MethodName { get; set; }
+        public GameObject InstanceGameObject;
+        public string InstanceInterfaceOrAbstrctClassName;
         public object MethodClassInstance { get; set; }
         public object ParametersData { get; set; }
-        public SerializationData OdinDataInstance { get; set; }
+
+        /// <summary>
+        /// it can be serialization data if its unity object or it can be byte[] if its non-unity object
+        /// </summary>
+        public byte[] DataBytesArray { get; set; }
+
+        public List<Object> ReferncedObjectsList { get; set; }
         public StackFrame[] StackFrameOfTheMethod { get; set; }
+        public bool IsEventBasedExecution;
+        public string DataJsonStringForReadability;
 
         public SnapShotDataStructure(string methodName,
             object methodClassInstance,
             object parametersData,
-            SerializationData odinDataInstance,
-            StackFrame[] stackFrameOfTheMethod)
+            byte[] dataBytesArray,
+            string dataJsonStringForReadability,
+            List<Object> referncedObjectsList,
+            StackFrame[] stackFrameOfTheMethod,
+            string instanceInterfaceOrAbstrctClassName,
+            GameObject instanceGameObject,
+            bool isEventBasedExecution)
         {
             MethodName = methodName;
             MethodClassInstance = methodClassInstance;
             ParametersData = parametersData;
-            OdinDataInstance = odinDataInstance;
+            DataBytesArray = dataBytesArray;
+            ReferncedObjectsList = referncedObjectsList;
             StackFrameOfTheMethod = stackFrameOfTheMethod;
+            InstanceGameObject = instanceGameObject;
+            InstanceInterfaceOrAbstrctClassName = instanceInterfaceOrAbstrctClassName;
+            IsEventBasedExecution = isEventBasedExecution;
+            DataJsonStringForReadability = dataJsonStringForReadability;
         }
     }
 
@@ -346,3 +383,4 @@ namespace NewGame
         }
     }
 }
+#endif

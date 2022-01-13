@@ -1,14 +1,13 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ES3Editor;
 using ES3Internal;
-using Mono.CecilX;
-using Mono.CecilX.Cil;
-using Mono.CecilX.Rocks;
+using Mono.Cecil;
+using Mono.Cecil.Cil;
 using NewGame;
-using RoslynCSharp.Compiler;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -18,7 +17,7 @@ namespace Assets.Editor
     public static class SnapshotInjector
     {
         public static string AssemblyLocation;
-        public static System.Reflection.Assembly MainAssembly= typeof(testScript).Assembly;
+        public static System.Reflection.Assembly MainAssembly = typeof(testScript).Assembly;
 
         public static Type TypeToGenerate = null;
 
@@ -28,15 +27,15 @@ namespace Assets.Editor
             AssemblyLocation = typeof(testScript).Assembly.Location;
         }
 
-        [InitializeOnLoadMethod]
-        private static void OnInitialized()
-        {
-            if (!EditorApplication.isPlayingOrWillChangePlaymode)
-            {
-                Debug.Log("Snapshot Injection Callback Initialized");
-                CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
-            }
-        }
+        //[InitializeOnLoadMethod]
+        //private static void OnInitialized()
+        //{
+        //    if (!EditorApplication.isPlayingOrWillChangePlaymode)
+        //    {
+        //       // Debug.Log("Snapshot Injection Callback Initialized");
+        //        //  CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
+        //    }
+        //}
 
         private static bool CompilerMessagesContainError(CompilerMessage[] messages)
         {
@@ -69,18 +68,19 @@ namespace Assets.Editor
             }
         }
 
-        [MenuItem("My Ui Commands/injectMethod #&q")]
         public static void InjectCode()
         {
             var CustomAssemmblyResolver = new DefaultAssemblyResolver();
             var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssembly.Location);
             CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
 
-            if (AssemblyLocation == null) return;
+            if (AssemblyLocation == null)
+                return;
             using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(
                 AssemblyLocation, new ReaderParameters
                 {
-                    ReadWrite = true, ReadSymbols = true,
+                    ReadWrite = true,
+                    ReadSymbols = true,
                     AssemblyResolver = CustomAssemmblyResolver
                 }))
             {
@@ -116,7 +116,8 @@ namespace Assets.Editor
                     foreach (var MethodDefinition in dd)
                     {
                         var IsMethodEligible = CheckforAttributes(MethodDefinition);
-                        if (!IsMethodEligible) continue;
+                        if (!IsMethodEligible)
+                            continue;
                         MethodsTOinject.Add(MethodDefinition);
                     }
                 }
@@ -254,10 +255,9 @@ namespace Assets.Editor
                             processor.InsertBefore(firstInstruction, newInstruction);
                         }
 
-                        MethodDefinition.Body.Optimize();
                     }
 
-                    var writeParams = new WriterParameters {WriteSymbols = true};
+                    var writeParams = new WriterParameters { WriteSymbols = true };
 
                     try
                     {
@@ -301,6 +301,7 @@ namespace Assets.Editor
 
             return filteredList;
         }
+
 
         [MenuItem("My Ui Commands/es3generate #&p")]
         public static void testingEs3Generate()

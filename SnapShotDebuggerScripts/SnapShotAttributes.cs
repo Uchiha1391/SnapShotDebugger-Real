@@ -13,5 +13,11 @@ namespace NewGame
         public class IgnoreSnapShotInjectionAttribute : Attribute
         {
         }
+
+        [AttributeUsage(AttributeTargets.Method)]
+        public class UndoInjectionAttribute : Attribute
+        {
+        }
+
     }
 }

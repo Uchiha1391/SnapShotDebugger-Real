@@ -13,7 +13,7 @@ public class SnapShotDebuggerUserInterface : MonoBehaviour
     [SerializeField] private string _methodsJsonSerializedData;
 
     [ ShowInInspector]
-    public bool SnapShotStopOrStart
+    public bool SnapShotStart
     {
         get => SnapshotDebubber.ShouldTakeSnapShot;
         set => SnapshotDebubber.ShouldTakeSnapShot = value;
@@ -45,7 +45,12 @@ public class SnapShotDebuggerUserInterface : MonoBehaviour
         SnapshotDebubber.SizeofDebuggingData();
 
     }
-
+    [Button]
+    public void UndoMethod()
+    {
+        SnapshotDebubber.UndoLastMethod();
+        Debug.Log("undo method is called");
+    }
 
 #endif    
 }

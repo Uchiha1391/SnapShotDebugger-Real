@@ -14,14 +14,51 @@ using Object = UnityEngine.Object;
 
 namespace NewGame
 {
+    public enum MethodUndoTypes
+    {
+        Snapshot,
+        playmodeSave,
+        Custom
+    }
+
     public class SnapshotDebubber
     {
         public static bool ShouldTakeSnapShot = false;
-        public static int NumberOfSnapShotstaken { get; private set; }
+        private static int NumberOfSnapShotstaken { get; set; }
 
+
+        public static List<UndoDataClass> NewMethodUndoRelatedList = new List<UndoDataClass>();
+
+
+        public class UndoDataClass
+        {
+            public string MethodName;
+            public MethodUndoTypes methodUndoTypes;
+            public Guid hybridId;
+            public object data;
+            public bool IsUndo;
+
+            public UndoDataClass(string methodName,
+                MethodUndoTypes methodUndoTypes,
+                Guid hybridId,
+                object data,
+                bool isUndo)
+            {
+                MethodName = methodName;
+                this.methodUndoTypes = methodUndoTypes;
+                this.hybridId = hybridId;
+                this.data = data;
+                IsUndo = isUndo;
+            }
+        }
+
+        private static int _hybridUndoSlotCounter;
+        private static Guid _currentHybridUndoID;
 
         public static List<SnapShotDataStructure> MethodsRelatedData { get; private set; } =
             new List<SnapShotDataStructure>();
+
+        #region snashot related
 
         private static bool CheckIfBaseClassMonobehaviour(Type objectType)
         {
@@ -90,7 +127,7 @@ namespace NewGame
                     }
 
                     var snapShotDataStructure = new SnapShotDataStructure(MethodName,
-                        MethodClassInstance, null, dataByteArray,checkJson, ReferncedObjectsList,
+                        MethodClassInstance, null, dataByteArray, checkJson, ReferncedObjectsList,
                         StackFrameOfTheMethod, MonoInterfaceOrAbstractClass?.Name,
                         casting.gameObject, isInvokedByMe);
                     MethodsRelatedData.Add(snapShotDataStructure);
@@ -107,17 +144,18 @@ namespace NewGame
                 bool isInvokedByMe = false;
                 if (StackFrameOfTheMethod.Length > 2)
                 {
-                    var ttt = StackFrameOfTheMethod[1].GetMethod().DeclaringType
-                            .GetInterface("IMyCode");
-                    if (ttt == null)
+                    var ttt = StackFrameOfTheMethod[1].GetMethod().DeclaringType.Assembly.GetName()
+                        .Name.Equals("Assembly-CSharp");
+                    if (ttt == false)
                     {
                         isInvokedByMe = true;
                     }
                 }
 
-                MethodsRelatedData.Add(new SnapShotDataStructure(MethodName, MethodClassInstance,
-                    null, dataBytesArray: serializeValue,checkJson, null, StackFrameOfTheMethod,
-                    NonMonoInterface.Name, null, isInvokedByMe));
+                var snapShotDataStructure = new SnapShotDataStructure(MethodName,
+                    MethodClassInstance, null, dataBytesArray: serializeValue, checkJson, null,
+                    StackFrameOfTheMethod, NonMonoInterface.Name, null, isInvokedByMe);
+                MethodsRelatedData.Add(snapShotDataStructure);
             }
 
 
@@ -261,29 +299,61 @@ namespace NewGame
             if (!ShouldTakeSnapShot)
                 return;
 
-            if (parameters.Length <= 0)
-                return;
             var ValueTuple = MethodsRelatedData.Last();
 
+            if (parameters.Length > 0)
+            {
+                var ParametersWithUnityObjectsReferences =
+                    new List<object>(); //if gameobject gets destroyed then es3 refrence will help as es3 creates a new gameobject if existing is not present.
+                foreach (var Parameter in parameters)
+                    if (Parameter != null && Parameter.GetType() == typeof(Object))
+                    {
+                        var reference = ES3ReferenceMgrBase.Current.Get((Object) Parameter);
+                        ParametersWithUnityObjectsReferences.Add(reference);
+                    }
+                    else
+                    {
+                        ParametersWithUnityObjectsReferences.Add(Parameter);
+                    }
 
-            var ParametersWithUnityObjectsReferences =
-                new List<object>(); //if gameobject gets destroyed then es3 refrence will help as es3 creates a new gameobject if existing is not present.
-            foreach (var Parameter in parameters)
-                if (Parameter != null && Parameter.GetType() == typeof(Object))
-                {
-                    var reference = ES3ReferenceMgrBase.Current.Get((Object) Parameter);
-                    ParametersWithUnityObjectsReferences.Add(reference);
-                }
-                else
-                {
-                    ParametersWithUnityObjectsReferences.Add(Parameter);
-                }
+                ValueTuple.ParametersData = ParametersWithUnityObjectsReferences.ToArray();
+            }
 
-            ValueTuple.ParametersData = ParametersWithUnityObjectsReferences.ToArray();
+
+            var methodInfo = ValueTuple.MethodClassInstance.GetType().GetMethod(
+                ValueTuple.MethodName,
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+            if (!CheckForUndoAttributes(methodInfo))
+            {
+                return;
+            }
+
+            if (_hybridUndoSlotCounter != 0)
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(ValueTuple.MethodName,
+                    MethodUndoTypes.Snapshot, _currentHybridUndoID, ValueTuple, false));
+                _hybridUndoSlotCounter--;
+            }
+            else
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(ValueTuple.MethodName,
+                    MethodUndoTypes.Snapshot, Guid.Empty, ValueTuple, false));
+            }
         }
 
         #endregion
 
+        static bool CheckForUndoAttributes(MethodInfo definition)
+        {
+            var at = definition.CustomAttributes;
+            foreach (var CustomAttribute in at)
+                if (CustomAttribute.AttributeType.Name ==
+                    nameof(SnapShotAttributes.UndoInjectionAttribute))
+                    return true;
+
+            return false;
+        }
 
         public static void LogMethodds()
         {
@@ -316,6 +386,205 @@ namespace NewGame
             var size = SizeConverterCustom.ToSize(dd.Length * sizeof(byte),
                 SizeConverterCustom.SizeUnits.MB);
             EditorUtility.DisplayDialog("Size of debuuger list", size, "ok");
+        }
+
+        #endregion
+
+
+        #region undo methods
+        #region undo main method overloads
+
+        public static void UndoLastMethod()
+
+        {
+            if (!NewMethodUndoRelatedList.Any())
+            {
+                Debug.Log("There is no method to undo");
+                return;
+            }
+
+            var methodToUndo = NewMethodUndoRelatedList.Last();
+
+            UndoMainMethodSpecific(methodToUndo);
+        }
+
+
+        public static void UndoMainMethodSpecific(UndoDataClass methodToUndo)
+        {
+            var nextMethodIndex = NewMethodUndoRelatedList.IndexOf(methodToUndo)+1; //because it will give the snapshot method type of hybrid methods undo
+            UndoMethodInvokeInternal(methodToUndo);
+            var previousMethodUndo = methodToUndo;
+            while (true)
+            {
+                if (!NewMethodUndoRelatedList.Any()) return;
+                if(nextMethodIndex>=NewMethodUndoRelatedList.Count)return;
+                var methodToUndoNext = NewMethodUndoRelatedList[nextMethodIndex];
+
+
+                if (!methodToUndoNext.hybridId.Equals(previousMethodUndo.hybridId))
+                {
+                    if (previousMethodUndo.methodUndoTypes != MethodUndoTypes.Snapshot)
+                    {
+                        break;
+
+                    }
+
+                }
+
+
+                UndoMethodInvokeInternal(methodToUndoNext);
+                previousMethodUndo = methodToUndoNext;
+                nextMethodIndex++;
+            }
+        }
+
+   
+
+        #endregion
+
+        private static void UndoMethodInvokeInternal(
+            UndoDataClass methodToUndo)
+        {
+            switch (methodToUndo.methodUndoTypes)
+            {
+                case MethodUndoTypes.Snapshot:
+                    UndoSnapshotMethod(methodToUndo.data);
+                    break;
+                case MethodUndoTypes.playmodeSave:
+                    UndoPlaymodeSaveMethod(methodToUndo.data);
+                    break;
+                case MethodUndoTypes.Custom:
+                    UndoCustomMethod(methodToUndo.MethodName, methodToUndo.data);
+
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            methodToUndo.IsUndo = true;
+
+
+        }
+
+        private static void UndoSnapshotMethod(object datamethodToUndo)
+        {
+            var deserializationContext = new DeserializationContext
+            {
+                Config = new SerializationConfig
+                {
+                    SerializationPolicy = SerializationPolicies.Everything
+                }
+            };
+            var castedData = (SnapShotDataStructure) datamethodToUndo;
+            var castedDataDataBytesArray = castedData.DataBytesArray;
+            if (castedData.ReferncedObjectsList != null)
+            {
+                var referencedUnityObjects = castedData.ReferncedObjectsList;
+                UnitySerializationUtility.DeserializeUnityObject(
+                    (Object) castedData.MethodClassInstance, ref castedDataDataBytesArray,
+                    ref referencedUnityObjects, DataFormat.JSON, deserializationContext);
+            }
+            else
+            {
+                castedData.MethodClassInstance =
+                    SerializationUtility.DeserializeValue<object>(castedDataDataBytesArray,
+                        DataFormat.JSON, deserializationContext);
+            }
+        }
+
+        private static void UndoPlaymodeSaveMethod(object methodToUndoData)
+        {
+            var castedData = (List<Component>) methodToUndoData;
+            foreach (var component in castedData)
+            {
+                CustomPlayModeSerializer.LoadComponentData(component);
+            }
+        }
+
+        private static void UndoCustomMethod(string methodname, object methodToUndoData)
+        {
+            var castedData = ((object methodClassInstance, byte[] data)) methodToUndoData;
+
+
+            var methodInfo = castedData.methodClassInstance.GetType().GetMethod("Undo" + methodname,
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (methodInfo == null)
+            {
+                Debug.Log("Couldnt find the correspoding undo method");
+                return;
+            }
+
+            if (castedData.data != null)
+            {
+                var parameterDataDeserializeValue =
+                    SerializationUtility.DeserializeValue<object>(castedData.data, DataFormat.JSON);
+
+                object[] parameters = new[] {parameterDataDeserializeValue};
+                methodInfo.Invoke(castedData.methodClassInstance, parameters);
+            }
+            else
+            {
+                methodInfo.Invoke(castedData.methodClassInstance, null);
+            }
+        }
+
+        #endregion
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void Init()
+        {
+            ShouldTakeSnapShot = false;
+            NumberOfSnapShotstaken = 0;
+            NewMethodUndoRelatedList.Clear();
+            _hybridUndoSlotCounter = 0;
+            _currentHybridUndoID = default;
+            MethodsRelatedData.Clear();
+            Debug.Log("snapshot debugger reset.");
+        }
+
+        public static void SaveCustomUndoData(string methodName,
+            object data,
+            object methodClassInstance)
+        {
+            var serializaeData = SerializationUtility.SerializeValue(data, DataFormat.JSON);
+
+            if (_hybridUndoSlotCounter != 0)
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.Custom,
+                    _currentHybridUndoID, (methodClassInstance, serializaeData), false));
+                _hybridUndoSlotCounter--;
+            }
+            else
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.Custom, Guid.Empty,
+                    (methodClassInstance, serializaeData), false));
+            }
+        }
+
+        public static void SavePlaymodeUndoData(string methodName, List<Component> componentsToSave)
+        {
+            foreach (var component in componentsToSave)
+            {
+                CustomPlayModeSerializer.SaveComponent(component);
+            }
+
+            if (_hybridUndoSlotCounter != 0)
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.playmodeSave,
+                    _currentHybridUndoID, componentsToSave, false));
+                _hybridUndoSlotCounter--;
+            }
+            else
+            {
+                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.playmodeSave, Guid.Empty,
+                    componentsToSave, false));
+            }
+        }
+
+        public static void CreateHybridUndoSlot(int count)
+        {
+            _hybridUndoSlotCounter = count;
+            _currentHybridUndoID = Guid.NewGuid();
         }
     }
 

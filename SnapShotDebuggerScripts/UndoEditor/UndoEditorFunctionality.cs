@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using NewGame;
 using RoslynCSharp.HotReloading;
+using RoslynCSharp.Modding;
 using Sirenix.OdinInspector;
 using Sirenix.Utilities.Editor;
 using UnityEditor;
@@ -13,10 +14,8 @@ using static NewGame.SnapshotDebubber;
 
 public class UndoEditorFunctionality : IUndoEditorFunctionality,IEditorWindowHotReload
 {
-    private UndoEditorFunctionality()
-    {
-    }
-
+    
+    
     private List<UndoDataClass> _undoMethodFilteredList =
         new List<UndoDataClass>();
 
@@ -43,7 +42,7 @@ public class UndoEditorFunctionality : IUndoEditorFunctionality,IEditorWindowHot
     {
         if (!NewMethodUndoRelatedList.Any())
         {
-            Debug.Log("There is no method to undo");
+            Debug.Log("There is no method to undo fuck you static");
             return;
         }
 
@@ -76,7 +75,7 @@ public class UndoEditorFunctionality : IUndoEditorFunctionality,IEditorWindowHot
 
     public void RedoTillThis(int index)
     {
-        Debug.Log("Still not implemented");
+        Debug.Log("Still not implemented  ");
     }
 
 
@@ -91,46 +90,41 @@ public class UndoEditorFunctionality : IUndoEditorFunctionality,IEditorWindowHot
             return;
         }
 
-        var snapShotFunction = NewMethodUndoRelatedList.FirstOrDefault(n =>
-            n.hybridId == signatureFunction.hybridId &&
-            signatureFunction.methodUndoTypes == MethodUndoTypes.Snapshot);
-        var methodSnapshotData = (SnapShotDataStructure) snapShotFunction.data;
+    
+        var methodSnapshotData = (SnapShotDataStructure) signatureFunction.data;
         var methodInfo = methodSnapshotData.MethodClassInstance.GetType().GetMethod(
-            snapShotFunction.MethodName,
+            signatureFunction.MethodName,
             BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         methodInfo?.Invoke(methodSnapshotData.MethodClassInstance,
             (object[]) methodSnapshotData.ParametersData);
         ShouldTakeSnapShot = true;
     }
 
-
     private void BeginDrawListElement(int index)
     {
         SirenixEditorGUI.BeginBox("Actions");
         SirenixEditorGUI.BeginBox("Redo");
 
-        if (SirenixEditorGUI.MenuButton(0, "RedoThis", true, null))
+        if (SirenixEditorGUI.MenuButton(20, "RedoThis", true, null))
         {
             RedoThis(index);
             Debug.Log("Redo complete");
 
         }
-
-        if (SirenixEditorGUI.MenuButton(0, "RedoTillThis", true, null))
+        if (SirenixEditorGUI.MenuButton(10, "RedoTillThis", true, null))
         {
             RedoTillThis(index);
         }
-        //
         SirenixEditorGUI.EndBox();
 
         SirenixEditorGUI.BeginBox("Undo");
 
-        if (SirenixEditorGUI.MenuButton(20, "UndoThis", true, null))
+        if (SirenixEditorGUI.MenuButton(10, "UndoThis", true, null))
         {
             UndoThis(index);
         }
 
-        if (SirenixEditorGUI.MenuButton(20, "UndoTillThis", true, null))
+        if (SirenixEditorGUI.MenuButton(10, "UndoTillThis", true, null))
         {
             UndoTillThis(index);
         }
@@ -164,4 +158,7 @@ public class UndoEditorFunctionality : IUndoEditorFunctionality,IEditorWindowHot
     }
 
     public static Dictionary<string, object> IUndoEditorFunctionality= new Dictionary<string, object>();
+
+    /// <inheritdoc />
+  
 }

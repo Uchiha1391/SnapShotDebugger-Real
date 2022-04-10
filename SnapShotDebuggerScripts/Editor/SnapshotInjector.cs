@@ -17,14 +17,14 @@ namespace Assets.Editor
     public static class SnapshotInjector
     {
         public static string AssemblyLocation;
-        public static System.Reflection.Assembly MainAssembly = typeof(testScript).Assembly;
+        public static System.Reflection.Assembly MainAssembly = typeof(testNonMonoScriptMono).Assembly;
 
         public static Type TypeToGenerate = null;
 
 
         private static void FillAssemblyName()
         {
-            AssemblyLocation = typeof(testScript).Assembly.Location;
+            AssemblyLocation = typeof(testNonMonoScriptMono).Assembly.Location;
         }
 
         //[InitializeOnLoadMethod]

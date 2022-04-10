@@ -18,6 +18,6 @@ namespace NewGame
         public class UndoInjectionAttribute : Attribute
         {
         }
-
+       
     }
 }

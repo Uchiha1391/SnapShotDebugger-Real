@@ -15,7 +15,7 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using Assembly = System.Reflection.Assembly;
 
-public class SnapshotInjectorEditor : OdinEditorWindow, IAssemblyProcessor
+public class SnapshotInjectorEditor : OdinEditorWindow
 {
     [ShowInInspector]
     private SnapShotInjectorSettintScriptableObject _injectorSettingScriptableObject;
@@ -27,7 +27,6 @@ public class SnapshotInjectorEditor : OdinEditorWindow, IAssemblyProcessor
     private static void ShowWindow()
     {
         Instance = GetWindow<SnapshotInjectorEditor>();
-        RegisterToAssemblyProcessor(Instance);
 
         Instance.Show();
         if (Instance._injectorSettingScriptableObject == null)
@@ -58,18 +57,22 @@ public class SnapshotInjectorEditor : OdinEditorWindow, IAssemblyProcessor
 
 
     public static string AssemblyLocation;
-    public static Assembly MainAssembly = typeof(testScript).Assembly;
+    public static Assembly MainAssembly = typeof(testNonMonoScriptMono).Assembly;
+    private static string _snapshotinjeInstanceGuid;
 
 
     private static void FillAssemblyName()
     {
-        AssemblyLocation = typeof(testScript).Assembly.Location;
+        AssemblyLocation = typeof(testNonMonoScriptMono).Assembly.Location;
     }
 
     [InitializeOnLoadMethod]
     private static void OnInitialized()
     {
         CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
+        _snapshotinjeInstanceGuid = SnapshotInjectorFunctionality.CreateInstanceAndItsGuid();
+       SnapshotInjectorFunctionality.GetInstanceFromGuid(_snapshotinjeInstanceGuid).RegisterToAssemblyProcessor();
+
 
     }
 
@@ -107,7 +110,6 @@ public class SnapshotInjectorEditor : OdinEditorWindow, IAssemblyProcessor
         }
     }
 
-    [MenuItem("My Ui Commands/injectMethod #&q")]
     public static void InjectCode()
     {
         if (!FindSnapShotSettingAsset()._shouldEnableInject)
@@ -343,19 +345,8 @@ public class SnapshotInjectorEditor : OdinEditorWindow, IAssemblyProcessor
     }
 
 
-     static void RegisterToAssemblyProcessor(SnapshotInjectorEditor instance)
-    {
-        if (RealtimeScriptingService.domain.RoslynCompilerService.ContainsAssemblyProcessor(instance))
-        {
-            return;
-        }
-        RealtimeScriptingService.domain.RoslynCompilerService.AddAssemblyProcessor(instance);
-    }
+    
 
-    public void OnProcessAssembly(AssemblyOutput assembly)
-    {
-        AssemblyLocation = assembly.AssemblyFilePath;
-        InjectCode();
-    }
+  
 }
 #endif

@@ -12,38 +12,35 @@ using Sirenix.Utilities.Editor;
 using UnityEditor;
 
 
-interface ITripper
-{
-}
-public class UndomethodEditorWindow : OdinEditorWindow,ITripper
+
+public class UndomethodEditorWindow : OdinEditorWindow 
 {
     private static string _guidUndoEditorFunctionalityInstance;
+
     [ShowInInspector]
     private static IUndoEditorFunctionality UndoEditorFunctionalityInstance
     {
-        get => UndoEditorFunctionality.GetInstanceFromGuid(_guidUndoEditorFunctionalityInstance);
+        get
+        {
+            var ttt = UndoEditorFunctionality.GetInstanceFromGuid(
+                _guidUndoEditorFunctionalityInstance);
+           
+            return ttt;
+        }
         set
         {
             var instance =
                 UndoEditorFunctionality.GetInstanceFromGuid(_guidUndoEditorFunctionalityInstance);
-                instance=value;
+            instance = value;
         }
     }
 
     [MenuItem("My Ui Commands/UndoMethodEditor")]
     private static void ShowWindow()
     {
-        
-      GetWindow<UndomethodEditorWindow>().Show();
-      if (_guidUndoEditorFunctionalityInstance == null) 
-        _guidUndoEditorFunctionalityInstance=UndoEditorFunctionality.CreateInstanceAndItsGuid();
-    
+        GetWindow<UndomethodEditorWindow>().Show();
+        if (_guidUndoEditorFunctionalityInstance == null)
+            _guidUndoEditorFunctionalityInstance =
+                 UndoEditorFunctionality.CreateInstanceAndItsGuid();
     }
-
-   
-
-
-
-  
-
 }

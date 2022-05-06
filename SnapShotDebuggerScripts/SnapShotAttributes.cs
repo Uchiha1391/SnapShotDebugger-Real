@@ -14,10 +14,6 @@ namespace NewGame
         {
         }
 
-        [AttributeUsage(AttributeTargets.Method)]
-        public class UndoInjectionAttribute : Attribute
-        {
-        }
-       
+   
     }
 }

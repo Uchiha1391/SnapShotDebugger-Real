@@ -14,40 +14,11 @@ using Object = UnityEngine.Object;
 
 namespace NewGame
 {
-    public enum MethodUndoTypes
-    {
-        Snapshot,
-        playmodeSave,
-        Custom
-    }
-
     public class SnapshotDebubber
     {
         public static bool ShouldTakeSnapShot = false;
         private static int NumberOfSnapShotstaken { get; set; }
-        public static List<UndoDataClass> NewMethodUndoRelatedList = new List<UndoDataClass>();
 
-        public class UndoDataClass
-        {
-            public string MethodName;
-            public MethodUndoTypes methodUndoTypes;
-            public Guid hybridId;
-            public object data;
-            public bool IsUndo;
-
-            public UndoDataClass(string methodName, MethodUndoTypes methodUndoTypes, Guid hybridId, object data,
-                bool isUndo)
-            {
-                MethodName = methodName;
-                this.methodUndoTypes = methodUndoTypes;
-                this.hybridId = hybridId;
-                this.data = data;
-                IsUndo = isUndo;
-            }
-        }
-
-        private static int _hybridUndoSlotCounter;
-        private static Guid _currentHybridUndoID;
 
         public static List<SnapShotDataStructure> MethodsRelatedData { get; private set; } =
             new List<SnapShotDataStructure>();
@@ -73,18 +44,22 @@ namespace NewGame
         public static void TakeSnapshot(object MethodClassInstance, string MethodName,
             StackFrame[] StackFrameOfTheMethod)
         {
-            if (!ShouldTakeSnapShot) return;
+            if (!ShouldTakeSnapShot)
+            {
+                return;
+            }
+
             var isbaseClassMonobehaviour = CheckIfBaseClassMonobehaviour(MethodClassInstance.GetType());
             SerializationContext serializationContext = new SerializationContext
             {
-                Config = new SerializationConfig {SerializationPolicy = SerializationPolicies.Everything}
+                Config = new SerializationConfig { SerializationPolicy = SerializationPolicies.Everything }
             };
             if (isbaseClassMonobehaviour)
             {
                 {
                     byte[] dataByteArray = null;
                     List<Object> ReferncedObjectsList = null;
-                    UnitySerializationUtility.SerializeUnityObject((Object) MethodClassInstance, ref dataByteArray,
+                    UnitySerializationUtility.SerializeUnityObject((Object)MethodClassInstance, ref dataByteArray,
                         ref ReferncedObjectsList, DataFormat.JSON, true, serializationContext);
                     var checkJson = Encoding.ASCII.GetString(dataByteArray);
                     Type MonoInterfaceOrAbstractClass = MethodClassInstance.GetType().GetInterfaces().FirstOrDefault();
@@ -97,16 +72,44 @@ namespace NewGame
                     }
 
                     var casting = MethodClassInstance as MonoBehaviour;
-                    bool isInvokedByMe = false;
-                    if (StackFrameOfTheMethod.Length > 2)
+                    bool isInvokedByMe = true;
+
+
+                    #region to know which method has futher inkoved which method... to make a chain
+
+                    if (MethodsRelatedData.Count != 0)
                     {
-                        var ttt = StackFrameOfTheMethod[1].GetMethod().DeclaringType.Assembly.GetName().Name
-                            .Equals("Assembly-CSharp");
-                        if (ttt == false)
+
+                        if (StackFrameOfTheMethod.Length == 1)
                         {
-                            isInvokedByMe = true;
+                            isInvokedByMe = false;
+                        }
+                        else
+                        {
+                            var StackMethodName = StackFrameOfTheMethod[1].GetMethod().Name;
+
+                            var MethodsRelatedDatalength = MethodsRelatedData.Count;
+                            for (int i = MethodsRelatedDatalength - 1; i >= 0; i--)
+                            {
+                                var snapshotStructure = MethodsRelatedData[i];
+                                if (snapshotStructure.MethodName != StackMethodName) continue;
+                                snapshotStructure.MethodInvokedByThisMethod.Add((MethodName,
+                                    MethodsRelatedDatalength - i,
+                                    MethodsRelatedData.Count - 1));
+                                isInvokedByMe = false;
+
+                                break;
+                            }
                         }
                     }
+
+                    #endregion
+
+                    // var ttt = MethodsRelatedData.Last().MethodName == StackFrameOfTheMethod[1].GetMethod().Name;
+                    // if (!ttt)
+                    // {
+                    //     isInvokedByMe = true;
+                    // }
 
                     var snapShotDataStructure = new SnapShotDataStructure(MethodName, MethodClassInstance, null,
                         dataByteArray, checkJson, ReferncedObjectsList, StackFrameOfTheMethod,
@@ -171,6 +174,7 @@ namespace NewGame
             return (newSetting, newKey);
         }
 
+        [Obsolete("now its not used and is commented only")]
         public static void UndloadSnapShot(int indexOfMethod)
         {
             //if (indexOfMethod > MethodsRelatedData.Count)
@@ -194,7 +198,7 @@ namespace NewGame
 
             //    #endregion
 
-            //    #region method class fields data restore
+            //    #region method class fields CustomdataToSave restore
 
             //    if (MethodsRelatedData.Count > 0)
             //    {
@@ -274,7 +278,7 @@ namespace NewGame
                 foreach (var Parameter in parameters)
                     if (Parameter != null && Parameter.GetType() == typeof(Object))
                     {
-                        var reference = ES3ReferenceMgrBase.Current.Get((Object) Parameter);
+                        var reference = ES3ReferenceMgrBase.Current.Get((Object)Parameter);
                         ParametersWithUnityObjectsReferences.Add(reference);
                     }
                     else
@@ -287,34 +291,18 @@ namespace NewGame
 
             var methodInfo = ValueTuple.MethodClassInstance.GetType().GetMethod(ValueTuple.MethodName,
                 BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            if (!CheckForUndoAttributes(methodInfo))
-            {
-                return;
-            }
-
-            if (_hybridUndoSlotCounter != 0)
-            {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(ValueTuple.MethodName, MethodUndoTypes.Snapshot,
-                    _currentHybridUndoID, ValueTuple, false));
-                _hybridUndoSlotCounter--;
-            }
-            else
-            {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(ValueTuple.MethodName, MethodUndoTypes.Snapshot,
-                    Guid.Empty, ValueTuple, false));
-            }
         }
 
         #endregion
 
-        static bool CheckForUndoAttributes(MethodInfo definition)
-        {
-            var at = definition.CustomAttributes;
-            foreach (var CustomAttribute in at)
-                if (CustomAttribute.AttributeType.Name == nameof(SnapShotAttributes.UndoInjectionAttribute))
-                    return true;
-            return false;
-        }
+        // static bool CheckForUndoAttributes(MethodInfo definition)
+        // {
+        //     var at = definition.CustomAttributes;
+        //     foreach (var CustomAttribute in at)
+        //         if (CustomAttribute.AttributeType.Name == nameof(SnapShotAttributes.UndoInjectionAttribute))
+        //             return true;
+        //     return false;
+        // }
 
         public static void LogMethodds()
         {
@@ -351,72 +339,56 @@ namespace NewGame
 
         #region undo main method overloads
 
+        [Obsolete("now its not used and is commented only")]
         public static void UndoLastMethod()
         {
-            if (!NewMethodUndoRelatedList.Any())
-            {
-                Debug.Log("There is no method to undo");
-                return;
-            }
-
-            var methodToUndo = NewMethodUndoRelatedList.Last();
-            UndoMainMethodSpecific(methodToUndo);
+            // if (!NewMethodUndoRelatedList.Any())
+            // {
+            //     Debug.Log("There is no method to undo");
+            //     return;
+            // }
+            //
+            // var methodToUndo = NewMethodUndoRelatedList.Last();
+            // UndoMainMethodSpecific(methodToUndo);
         }
 
-        public static void UndoMainMethodSpecific(UndoDataClass methodToUndo)
+        public static void UndoMainMethodSpecific(int index)
         {
-            var nextMethodIndex =
-                NewMethodUndoRelatedList.IndexOf(methodToUndo) +
-                1; //because it will give the snapshot method type of hybrid methods undo
-            UndoMethodInvokeInternal(methodToUndo);
-            var previousMethodUndo = methodToUndo;
-            while (true)
-            {
-                if (!NewMethodUndoRelatedList.Any()) return;
-                if (nextMethodIndex >= NewMethodUndoRelatedList.Count) return;
-                var methodToUndoNext = NewMethodUndoRelatedList[nextMethodIndex];
-                if (!methodToUndoNext.hybridId.Equals(previousMethodUndo.hybridId))
-                {
-                    if (previousMethodUndo.methodUndoTypes != MethodUndoTypes.Snapshot)
-                    {
-                        break;
-                    }
-                }
-
-                UndoMethodInvokeInternal(methodToUndoNext);
-                previousMethodUndo = methodToUndoNext;
-                nextMethodIndex++;
-            }
+            UndoMethodInvokeInternal(index);
         }
 
         #endregion
 
-        private static void UndoMethodInvokeInternal(UndoDataClass methodToUndo)
+        private static void UndoMethodInvokeInternal(int index)
         {
-            switch (methodToUndo.methodUndoTypes)
+            var methodToUndo = MethodsRelatedData[index];
+            UndoSnapshotMethod(methodToUndo);
+
+            foreach (var undoDataInstance in methodToUndo.undoDataList)
             {
-                case MethodUndoTypes.Snapshot:
-                    UndoSnapshotMethod(methodToUndo.data);
-                    break;
-                case MethodUndoTypes.playmodeSave:
-                    UndoPlaymodeSaveMethod(methodToUndo.data);
-                    break;
-                case MethodUndoTypes.Custom:
-                    UndoCustomMethod(methodToUndo.MethodName, methodToUndo.data);
-                    break;
-                default: throw new ArgumentOutOfRangeException();
+                switch (undoDataInstance.methodUndoTypes)
+                {
+                    case MethodUndoTypes.playmodeSave:
+                        UndoPlaymodeSaveMethod(undoDataInstance.data);
+                        break;
+                    case MethodUndoTypes.Custom:
+                        UndoCustomMethod(methodToUndo.MethodName, undoDataInstance.data,
+                            methodToUndo.MethodClassInstance);
+                        break;
+                    default: throw new ArgumentOutOfRangeException();
+                }
             }
 
-            methodToUndo.IsUndo = true;
+            methodToUndo.IsUndoItself = true;
         }
 
         private static void UndoSnapshotMethod(object datamethodToUndo)
         {
             var deserializationContext = new DeserializationContext
             {
-                Config = new SerializationConfig {SerializationPolicy = SerializationPolicies.Everything}
+                Config = new SerializationConfig { SerializationPolicy = SerializationPolicies.Everything }
             };
-            var castedData = (SnapShotDataStructure) datamethodToUndo;
+            var castedData = (SnapShotDataStructure)datamethodToUndo;
             var castedDataDataBytesArray = castedData.DataBytesArray;
             if (castedData.MethodClassInstance == null)
             {
@@ -428,7 +400,7 @@ namespace NewGame
             if (castedData.ReferncedObjectsList != null)
             {
                 var referencedUnityObjects = castedData.ReferncedObjectsList;
-                UnitySerializationUtility.DeserializeUnityObject((Object) castedData.MethodClassInstance,
+                UnitySerializationUtility.DeserializeUnityObject((Object)castedData.MethodClassInstance,
                     ref castedDataDataBytesArray, ref referencedUnityObjects, DataFormat.JSON, deserializationContext);
             }
             else
@@ -440,17 +412,16 @@ namespace NewGame
 
         private static void UndoPlaymodeSaveMethod(object methodToUndoData)
         {
-            var castedData = (List<Component>) methodToUndoData;
+            var castedData = (List<Component>)methodToUndoData;
             foreach (var component in castedData)
             {
                 CustomPlayModeSerializer.LoadComponentData(component);
             }
         }
 
-        private static void UndoCustomMethod(string methodname, object methodToUndoData)
+        private static void UndoCustomMethod(string methodname, object methodToUndoData, object methodClassInstance)
         {
-            var castedData = ((object methodClassInstance, byte[] data)) methodToUndoData;
-            var methodInfo = castedData.methodClassInstance.GetType().GetMethod("Undo" + methodname,
+            var methodInfo = methodClassInstance.GetType().GetMethod("Undo" + methodname,
                 BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             if (methodInfo == null)
             {
@@ -458,16 +429,16 @@ namespace NewGame
                 return;
             }
 
-            if (castedData.data != null)
+            if (methodToUndoData != null)
             {
                 var parameterDataDeserializeValue =
-                    SerializationUtility.DeserializeValue<object>(castedData.data, DataFormat.JSON);
-                object[] parameters = new[] {parameterDataDeserializeValue};
-                methodInfo.Invoke(castedData.methodClassInstance, parameters);
+                    SerializationUtility.DeserializeValue<object>((byte[])methodToUndoData, DataFormat.JSON);
+                object[] parameters = new[] { parameterDataDeserializeValue };
+                methodInfo.Invoke(methodClassInstance, parameters);
             }
             else
             {
-                methodInfo.Invoke(castedData.methodClassInstance, null);
+                methodInfo.Invoke(methodClassInstance, null);
             }
         }
 
@@ -477,58 +448,86 @@ namespace NewGame
         static void Init()
         {
             NumberOfSnapShotstaken = 0;
-            NewMethodUndoRelatedList.Clear();
-            _hybridUndoSlotCounter = 0;
-            _currentHybridUndoID = default;
             MethodsRelatedData.Clear();
             Debug.Log("snapshot debugger reset.");
         }
 
-        public static void SaveCustomUndoData(string methodName, object data, object methodClassInstance)
+        public static void SaveCustomUndoData(string methodName, object CustomdataToSave, object methodClassInstance)
         {
-            var serializaeData = SerializationUtility.SerializeValue(data, DataFormat.JSON);
-            if (_hybridUndoSlotCounter != 0)
+            if (!ShouldTakeSnapShot)
             {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.Custom, _currentHybridUndoID,
-                    (methodClassInstance, serializaeData), false));
-                _hybridUndoSlotCounter--;
+                Debug.LogError("snapshot taker is off.... turn it on");
+                return;
+            }
+
+            var serializaeData = SerializationUtility.SerializeValue(CustomdataToSave, DataFormat.JSON);
+            var snapShotDataStructureLast = MethodsRelatedData.Last();
+            if (methodName == snapShotDataStructureLast.MethodName)
+            {
+                var undoDataInstance = new UndoDataClass(MethodUndoTypes.Custom, serializaeData);
+                snapShotDataStructureLast.undoDataList.Add(undoDataInstance);
             }
             else
             {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.Custom, Guid.Empty,
-                    (methodClassInstance, serializaeData), false));
+                Debug.LogError(" you havent put snapshot injector attribute .... so you cannot use undo system");
             }
         }
 
         public static void SaveComponents(string methodName, List<Component> componentsToSave)
         {
+            if (!ShouldTakeSnapShot)
+            {
+                Debug.LogError("snapshot taker is off.... turn it on");
+                return;
+            }
+
             foreach (var component in componentsToSave)
             {
                 CustomPlayModeSerializer.SaveComponent(component);
             }
 
-            if (_hybridUndoSlotCounter != 0)
+            var snapShotDataStructureLast = MethodsRelatedData.Last();
+
+
+            if (methodName == snapShotDataStructureLast.MethodName)
             {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.playmodeSave,
-                    _currentHybridUndoID, componentsToSave, false));
-                _hybridUndoSlotCounter--;
+                var undoDataInstance = new UndoDataClass(MethodUndoTypes.playmodeSave, componentsToSave);
+                snapShotDataStructureLast.undoDataList.Add(undoDataInstance);
             }
             else
             {
-                NewMethodUndoRelatedList.Add(new UndoDataClass(methodName, MethodUndoTypes.playmodeSave, Guid.Empty,
-                    componentsToSave, false));
+                Debug.LogError(" you havent put snapshot injector attribute .... so you cannot use undo system");
             }
         }
+    }
 
-        public static void CreateHybridUndoSlot(int count)
+
+    public enum MethodUndoTypes
+    {
+        Snapshot,
+        playmodeSave,
+        Custom
+    }
+
+    public class UndoDataClass
+    {
+        public string MethodName;
+        public MethodUndoTypes methodUndoTypes;
+        public object data;
+
+        public UndoDataClass(MethodUndoTypes methodUndoTypes, object data
+        )
         {
-            _hybridUndoSlotCounter = count;
-            _currentHybridUndoID = Guid.NewGuid();
+            this.methodUndoTypes = methodUndoTypes;
+            this.data = data;
         }
     }
 
     public class SnapShotDataStructure
     {
+        public bool IsUndoItself;
+        public bool IsUndoItChain;
+
         public string MethodName { get; set; }
         public GameObject InstanceGameObject;
         public string InstanceInterfaceOrAbstrctClassName;
@@ -536,7 +535,7 @@ namespace NewGame
         public object ParametersData { get; set; }
 
         /// <summary>
-        /// it can be serialization data if its unity object or it can be byte[] if its non-unity object
+        /// it can be serialization CustomdataToSave if its unity object or it can be byte[] if its non-unity object
         /// </summary>
         public byte[] DataBytesArray { get; set; }
 
@@ -544,6 +543,10 @@ namespace NewGame
         public StackFrame[] StackFrameOfTheMethod { get; set; }
         public bool IsEventBasedExecution;
         public string DataJsonStringForReadability;
+        public List<UndoDataClass> undoDataList = new List<UndoDataClass>();
+
+        public List<(string methodName, int indent, int index)> MethodInvokedByThisMethod =
+            new List<(string methodName, int indent, int index)>();
 
         public SnapShotDataStructure(string methodName, object methodClassInstance, object parametersData,
             byte[] dataBytesArray, string dataJsonStringForReadability, List<Object> referncedObjectsList,
@@ -580,7 +583,7 @@ namespace NewGame
 
         public static string ToSize(this long value, SizeUnits unit)
         {
-            return (value / Math.Pow(1024, (long) unit)).ToString("0.00");
+            return (value / Math.Pow(1024, (long)unit)).ToString("0.00");
         }
     }
 }

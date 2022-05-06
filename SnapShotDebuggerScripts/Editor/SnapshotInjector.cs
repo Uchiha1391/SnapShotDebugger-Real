@@ -244,6 +244,7 @@ namespace Assets.Editor
                             if (newInstruction.Operand is MethodReference Reference)
 
                             {
+                                
                                 newInstruction.Operand =
                                     AssemblyDefinitionInstance.MainModule.ImportReference(
                                         Reference);
@@ -251,6 +252,12 @@ namespace Assets.Editor
 
                             var firstInstruction = MethodDefinition.Body.Instructions[0];
 
+                            // if (MethodDefinition.Body.Instructions.Last().Operand == OpCodes.Ret)
+                            // {
+                            //     
+                            // }
+                            
+                            
                             var processor = MethodDefinition.Body.GetILProcessor();
                             processor.InsertBefore(firstInstruction, newInstruction);
                         }

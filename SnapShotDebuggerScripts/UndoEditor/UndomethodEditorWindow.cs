@@ -15,32 +15,33 @@ using UnityEditor;
 
 public class UndomethodEditorWindow : OdinEditorWindow 
 {
-    private static string _guidUndoEditorFunctionalityInstance;
-
-    [ShowInInspector]
-    private static IUndoEditorFunctionality UndoEditorFunctionalityInstance
-    {
-        get
-        {
-            var ttt = UndoEditorFunctionality.GetInstanceFromGuid(
-                _guidUndoEditorFunctionalityInstance);
-           
-            return ttt;
-        }
-        set
-        {
-            var instance =
-                UndoEditorFunctionality.GetInstanceFromGuid(_guidUndoEditorFunctionalityInstance);
-            instance = value;
-        }
-    }
-
-    [MenuItem("My Ui Commands/UndoMethodEditor")]
-    private static void ShowWindow()
-    {
-        GetWindow<UndomethodEditorWindow>().Show();
-        if (_guidUndoEditorFunctionalityInstance == null)
-            _guidUndoEditorFunctionalityInstance =
-                 UndoEditorFunctionality.CreateInstanceAndItsGuid();
-    }
+    // private static string _guidUndoEditorFunctionalityInstance;
+    //
+    // [ShowInInspector]
+    // private static IUndoEditorFunctionality UndoEditorFunctionalityInstance
+    // {
+    //     get
+    //     {
+    //         var ttt = UndoEditorFunctionality.GetInstanceFromGuid(
+    //             _guidUndoEditorFunctionalityInstance);
+    //        
+    //         return ttt;
+    //     }
+    //     set
+    //     {
+    //         var instance =
+    //             UndoEditorFunctionality.GetInstanceFromGuid(_guidUndoEditorFunctionalityInstance);
+    //         instance = value;
+    //     }
+    // }
+    //
+    // [MenuItem("My Ui Commands/UndoMethodEditor")]
+    // private static void ShowWindow()
+    // {
+    //     GetWindow<UndomethodEditorWindow>().Show();
+    //     if (_guidUndoEditorFunctionalityInstance == null)
+    //         _guidUndoEditorFunctionalityInstance =
+    //              UndoEditorFunctionality.CreateInstanceAndItsGuid();
+    // }
+    //
 }

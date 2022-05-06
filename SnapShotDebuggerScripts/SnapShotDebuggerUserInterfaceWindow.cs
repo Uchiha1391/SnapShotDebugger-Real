@@ -7,17 +7,18 @@ using UnityEngine;
 using NewGame;
 using RoslynCSharp.HotReloading;
 using Sirenix.OdinInspector;
+using Sirenix.OdinInspector.Editor;
 using UnityEditor;
 
-public class SnapShotDebuggerUserInterface : OdinPracticeEditorWindow
+public class SnapShotDebuggerUserInterfaceWindow : OdinEditorWindow
 {
 
 
-    [MenuItem("My Ui Commands/SnapShotDebuggerUserInterface ")]
+    [MenuItem("My Ui Commands/SnapShotDebuggerUserInterfaceWindow ")]
     public static void OpenWindow()
     {
         
-        GetWindow<SnapShotDebuggerUserInterface>().Show();
+        GetWindow<SnapShotDebuggerUserInterfaceWindow>().Show();
     }
 
     [ShowInInspector]

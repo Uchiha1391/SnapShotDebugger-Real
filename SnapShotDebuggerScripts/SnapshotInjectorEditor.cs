@@ -23,7 +23,7 @@ public class SnapshotInjectorEditor : OdinEditorWindow
 
     public static SnapshotInjectorEditor Instance;
 
-    [MenuItem("My Ui Commands/SnapshotInjectorEditor")]
+    [MenuItem("My Ui Commands/Snapshot related/SnapshotInjectorEditor")]
     private static void ShowWindow()
     {
         Instance = GetWindow<SnapshotInjectorEditor>();

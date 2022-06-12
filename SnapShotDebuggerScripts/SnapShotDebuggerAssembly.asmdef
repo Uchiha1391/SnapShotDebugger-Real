@@ -1,0 +1,19 @@
+{
+    "name": "SnapShotDebuggerAssembly",
+    "references": [
+        "GUID:2c5beb0055dbae542ae130bfd372aca5",
+        "GUID:1b781a419867f2a4ca0b54b17fb87103",
+        "GUID:954ce0d3ce34f254a876b6926aafd951",
+        "GUID:e0fae01ea75929e468605e1ce0e64036",
+        "GUID:cf9af5e9e25add142b3eb19b832f5b59"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

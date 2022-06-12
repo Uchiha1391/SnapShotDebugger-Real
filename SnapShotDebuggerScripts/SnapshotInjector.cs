@@ -4,6 +4,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Assets.Editor;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using NewGame;
@@ -15,120 +16,82 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using Assembly = System.Reflection.Assembly;
 
-public class SnapshotInjectorEditor : OdinEditorWindow
+
+public class SnapshotInjector : IAssemblyProcessor, ISnapshotInjector
 {
-    [ShowInInspector]
-    private SnapShotInjectorSettintScriptableObject _injectorSettingScriptableObject;
-
-
-    public static SnapshotInjectorEditor Instance;
-
-    [MenuItem("My Ui Commands/Snapshot related/SnapshotInjectorEditor")]
-    private static void ShowWindow()
+    private SnapshotInjector()
     {
-        Instance = GetWindow<SnapshotInjectorEditor>();
-
-        Instance.Show();
-        if (Instance._injectorSettingScriptableObject == null)
-        {
-            Instance._injectorSettingScriptableObject = FindSnapShotSettingAsset();
-        }
+        RegisterToAssemblyProcessor();
     }
 
-    private static SnapShotInjectorSettintScriptableObject FindSnapShotSettingAsset()
+    public static SnapshotInjector Instance { get; } = new SnapshotInjector();
+
+    public enum UnityCSharpProjectFile
     {
-        // Try to find the asset
-        string[] guids =
-            AssetDatabase.FindAssets("t:" + typeof(SnapShotInjectorSettintScriptableObject).Name);
+        /// <summary>
+        /// The main assembly where all runtime scripts are added, unless assembly definition files are used.
+        /// </summary>
+        Assembly_CSharp,
 
-        if (guids.Length == 0)
-        {
-            Debug.LogWarningFormat("Failed to load settings asset '{0}'",
-                typeof(SnapShotInjectorSettintScriptableObject));
-            return null;
-        }
+        /// <summary>
+        /// The first pass assembly where all runtime scripts located inside the 'Plugins' folder are added, unless assembly definition files are used.
+        /// </summary>
+        Assembly_CSharp_Firstpass,
 
-        // Get the asset path
-        string loadPath = AssetDatabase.GUIDToAssetPath(guids[0]);
+        /// <summary>
+        /// The main assembly where all editor scripts located inside the 'Editor' folder are added, unless assembly definition files are used.
+        /// </summary>
+        Assembly_CSharp_Editor,
 
-        // Load the asset
-        return AssetDatabase.LoadAssetAtPath<SnapShotInjectorSettintScriptableObject>(loadPath);
+        /// <summary>
+        /// The first pass assembly where all editor scripts located inside the 'Editor/Plugins' folder are added, unless assembly definition files are used.
+        /// </summary>
+        Assembly_CSharp_Editor_Firstpass,
+
+        /// <summary>
+        /// this is my snapshot debugger assembly
+        /// </summary>
+        SnapShotDebuggerAssembly
     }
 
 
-    public static string AssemblyLocation;
-    public static Assembly MainAssembly = typeof(testNonMonoScriptMono).Assembly;
-    private static string _snapshotinjeInstanceGuid;
+    private static string AssemblyToInjectIn;
 
+    private SnapShotInjectorSettintScriptableObject _InjectorSettingScriptableObject;
 
-    private static void FillAssemblyName()
+    public SnapShotInjectorSettintScriptableObject InjectorSettingScriptableObject
     {
-        AssemblyLocation = typeof(testNonMonoScriptMono).Assembly.Location;
-    }
-
-    [InitializeOnLoadMethod]
-    private static void OnInitialized()
-    {
-        CompilationPipeline.assemblyCompilationFinished += OnCompilationFinished;
-        _snapshotinjeInstanceGuid = SnapshotInjectorFunctionality.CreateInstanceAndItsGuid();
-       SnapshotInjectorFunctionality.GetInstanceFromGuid(_snapshotinjeInstanceGuid).RegisterToAssemblyProcessor();
-
-
-    }
-
-    private static bool CompilerMessagesContainError(CompilerMessage[] messages)
-    {
-        return messages.Any(msg => msg.type == CompilerMessageType.Error);
-    }
-
-
-    private static void OnCompilationFinished(string assemblyPath, CompilerMessage[] messages)
-    {
-        // Do nothing if there were compile errors on the target
-        if (CompilerMessagesContainError(messages))
+        get
         {
-            Debug.Log(" stop because compile errors on target");
-            return;
-        }
-
-        FillAssemblyName();
-        // its kinda useless code for now its just for testing string comparison
-        if (assemblyPath.Contains("-Editor") || assemblyPath.Contains(".Editor") ||
-            assemblyPath.Contains("Editor.dll"))
-        {
-            Debug.Log("These are only editor dlls not the runtime dll");
-            return;
-        }
-
-        var normalizeScriptPath = AssemblyLocation.Replace('\\', '/');
-        var RelativePath = FileUtil.GetProjectRelativePath(normalizeScriptPath);
-
-
-        if (assemblyPath.Contains(RelativePath))
-        {
-            InjectCode();
-        }
-    }
-
-    public static void InjectCode()
-    {
-        if (!FindSnapShotSettingAsset()._shouldEnableInject)
-        {
-            Debug.Log(" SnapShot injector is disabled");
-            return;
-        }
-
-        var CustomAssemmblyResolver = new DefaultAssemblyResolver();
-        var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssembly.Location);
-        CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
-
-        if (AssemblyLocation == null) return;
-        using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(AssemblyLocation,
-            new ReaderParameters
+            if (_InjectorSettingScriptableObject == null)
             {
-                ReadWrite = true, ReadSymbols = true,
-                AssemblyResolver = CustomAssemmblyResolver
-            }))
+                _InjectorSettingScriptableObject = AssetDatabase
+                    .FindAssets($"t: {nameof(SnapShotInjectorSettintScriptableObject)}").ToList()
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Select(AssetDatabase.LoadAssetAtPath<SnapShotInjectorSettintScriptableObject>)
+                    .FirstOrDefault();
+            }
+
+            return _InjectorSettingScriptableObject;
+        }
+
+        set => _InjectorSettingScriptableObject = value;
+    }
+
+
+    public void InjectCode(string assemblyPath)
+    {
+        var CustomAssemmblyResolver = new DefaultAssemblyResolver();
+        var SnapShotDebuggerAssemblyPath = Path.GetDirectoryName(typeof(SnapshotDebubber).Assembly.Location);
+        CustomAssemmblyResolver.AddSearchDirectory(SnapShotDebuggerAssemblyPath);
+
+        AssemblyToInjectIn = assemblyPath;
+        using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(AssemblyToInjectIn,
+                   new ReaderParameters
+                   {
+                       ReadWrite = true, ReadSymbols = true,
+                       AssemblyResolver = CustomAssemmblyResolver
+                   }))
         {
             var TypeDefinitions = AssemblyDefinitionInstance.MainModule.GetTypes().Where(
                 definition =>
@@ -281,7 +244,7 @@ public class SnapshotInjectorEditor : OdinEditorWindow
 
 
                     foreach (var newInstruction in FinalInstructionsToinject
-                    ) // add the new instructions in referse order
+                            ) // add the new instructions in referse order
                     {
                         if (newInstruction.Operand is MethodReference Reference)
 
@@ -297,7 +260,7 @@ public class SnapshotInjectorEditor : OdinEditorWindow
                     }
                 }
 
-                var writeParams = new WriterParameters {WriteSymbols = true};
+                var writeParams = new WriterParameters { WriteSymbols = true };
 
                 try
                 {
@@ -306,7 +269,7 @@ public class SnapshotInjectorEditor : OdinEditorWindow
 
 
                     Debug.Log(" finished injecting methods count==" + FilterMethodList.Count +
-                              "   assemblyLocation is--" + AssemblyLocation);
+                              "   assemblyLocation is--" + AssemblyToInjectIn);
                 }
                 catch (Exception e)
                 {
@@ -335,7 +298,7 @@ public class SnapshotInjectorEditor : OdinEditorWindow
             //    continue;
 
             if (MethodDefinition.IsConstructor || MethodDefinition.IsSpecialName ||
-                MethodDefinition.IsStatic || MethodDefinition.Name=="Update")
+                MethodDefinition.IsStatic || MethodDefinition.Name == "Update")
                 continue;
 
             filteredList.Add(MethodDefinition);
@@ -344,9 +307,18 @@ public class SnapshotInjectorEditor : OdinEditorWindow
         return filteredList;
     }
 
+    public void OnProcessAssembly(AssemblyOutput assembly)
+    {
+        SnapshotInjector.Instance.InjectCode(assembly.AssemblyFilePath);
+    }
 
-    
-
-  
+    /// <summary>
+    /// this is for registering Rosnlyn hot reloaded asseblies
+    /// </summary>
+    public void RegisterToAssemblyProcessor()
+    {
+        RealtimeScriptingService.domain.RoslynCompilerService.AddAssemblyProcessor(this);
+        Debug.Log("snapshot injector registered to assembly processor");
+    }
 }
 #endif

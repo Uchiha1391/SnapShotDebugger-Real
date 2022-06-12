@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using ES3Editor;
-using ES3Internal;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using NewGame;
@@ -14,17 +12,20 @@ using UnityEngine;
 
 namespace Assets.Editor
 {
+    
+  
+    [Obsolete("its just present for future lookup so that I can get a hint on what and how I did in the past")]
     public static class SnapshotInjector
     {
-        public static string AssemblyLocation;
-        public static System.Reflection.Assembly MainAssembly = typeof(testNonMonoScriptMono).Assembly;
+        private static string Main_Assembly_csharp_Location;
 
         public static Type TypeToGenerate = null;
 
 
-        private static void FillAssemblyName()
+        private static void FillMainAssemblyName()
         {
-            AssemblyLocation = typeof(testNonMonoScriptMono).Assembly.Location;
+            Main_Assembly_csharp_Location=CompilationPipeline.GetPrecompiledAssemblyPathFromAssemblyName(global::SnapshotInjector.UnityCSharpProjectFile.Assembly_CSharp
+                .ToString());
         }
 
         //[InitializeOnLoadMethod]
@@ -52,13 +53,13 @@ namespace Assets.Editor
                 return;
             }
 
-            FillAssemblyName();
+            FillMainAssemblyName();
             // its kinda useless code for now its just for testing string comparison
             if (assemblyPath.Contains("-Editor") || assemblyPath.Contains(".Editor") ||
                 assemblyPath.Contains("Editor.dll"))
                 return;
 
-            var normalizeScriptPath = AssemblyLocation.Replace('\\', '/');
+            var normalizeScriptPath = Main_Assembly_csharp_Location.Replace('\\', '/');
             var RelativePath = FileUtil.GetProjectRelativePath(normalizeScriptPath);
 
 
@@ -71,13 +72,15 @@ namespace Assets.Editor
         public static void InjectCode()
         {
             var CustomAssemmblyResolver = new DefaultAssemblyResolver();
-            var MainAssemblyDirectoryPath = Path.GetDirectoryName(MainAssembly.Location);
+            var MainAssemblyDirectoryPath =
+                CompilationPipeline.GetPrecompiledAssemblyPathFromAssemblyName(global::SnapshotInjector.UnityCSharpProjectFile.Assembly_CSharp
+                    .ToString());
             CustomAssemmblyResolver.AddSearchDirectory(MainAssemblyDirectoryPath);
 
-            if (AssemblyLocation == null)
+            if (Main_Assembly_csharp_Location == null)
                 return;
             using (var AssemblyDefinitionInstance = AssemblyDefinition.ReadAssembly(
-                AssemblyLocation, new ReaderParameters
+                Main_Assembly_csharp_Location, new ReaderParameters
                 {
                     ReadWrite = true,
                     ReadSymbols = true,
@@ -275,7 +278,7 @@ namespace Assets.Editor
 
                         Debug.Log(" finished injecting methods count==" +
                                   FilterMethodList.Count + "   assemblyLocation is--" +
-                                  AssemblyLocation);
+                                  Main_Assembly_csharp_Location);
                     }
                     catch (Exception e)
                     {
@@ -313,27 +316,27 @@ namespace Assets.Editor
         [MenuItem("My Ui Commands/es3generate #&p")]
         public static void testingEs3Generate()
         {
-            var TypeToCreateScriptFor = TypeToGenerate;
-
-            CustomEs3TypeGeneratorData.Instance.fields =
-                ES3Reflection.GetSerializableMembers(TypeToCreateScriptFor, false);
-
-            CustomEs3TypeGeneratorData.Instance.fieldSelected =
-                new bool[CustomEs3TypeGeneratorData.Instance.fields.Length];
-
-            CustomEs3TypeGeneratorData.Instance
-                .SelectAll(true,
-                    true); // this code will automatically check for my class propeties and wont allow them to serialized
-
-            //for (var Index = 0; Index < customEs3TypeGeneratorData.Instance.fieldSelected.Length; Index++)
-            //{
-            //    customEs3TypeGeneratorData.Instance.fieldSelected[Index] = true;
-            //}
-
-            CustomEs3TypeGeneratorData.Instance.GenerateCustom(TypeToCreateScriptFor);
-
-            //customEs3TypeGeneratorData.Instance.SelectType(TypeToCreateScriptFor); // doesnt need this it servers no purpose
-            Debug.Log("finished es3 type");
+            // var TypeToCreateScriptFor = TypeToGenerate;
+            //
+            // CustomEs3TypeGeneratorData.Instance.fields =
+            //     ES3Reflection.GetSerializableMembers(TypeToCreateScriptFor, false);
+            //
+            // CustomEs3TypeGeneratorData.Instance.fieldSelected =
+            //     new bool[CustomEs3TypeGeneratorData.Instance.fields.Length];
+            //
+            // CustomEs3TypeGeneratorData.Instance
+            //     .SelectAll(true,
+            //         true); // this code will automatically check for my class propeties and wont allow them to serialized
+            //
+            // //for (var Index = 0; Index < customEs3TypeGeneratorData.Instance.fieldSelected.Length; Index++)
+            // //{
+            // //    customEs3TypeGeneratorData.Instance.fieldSelected[Index] = true;
+            // //}
+            //
+            // CustomEs3TypeGeneratorData.Instance.GenerateCustom(TypeToCreateScriptFor);
+            //
+            // //customEs3TypeGeneratorData.Instance.SelectType(TypeToCreateScriptFor); // doesnt need this it servers no purpose
+            // Debug.Log("finished es3 type");
         }
     }
 }

@@ -14,6 +14,12 @@ namespace NewGame
         {
         }
 
+        
+        [AttributeUsage(AttributeTargets.Interface)]
+        public class HotReloadedInterfaceAttribute : Attribute
+        {
+        }
+
    
     }
 }
